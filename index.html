@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v19.1 (Mobile Switch)</title>
+    <title>AI Director - Personal History Project v19.2 (Mobile Fix)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
         
-        /* インカメラ時は反転(scaleX(-1))、アウトカメラ時は正像(scaleX(1))をJavaScriptで動的制御 */
+        /* インカメラ時はJavaScript側で反転、アウトカメラ時は正像に動的制御 */
         video { width: 100%; height: 100%; object-fit: cover; }
         canvas { display: none; }
         .ui { position: absolute; z-index: 10; width: 100%; text-align: center; pointer-events: none; left: 0; }
@@ -38,16 +38,11 @@
             display: none; box-shadow: 0 0 30px #f00; z-index: 5;
         }
 
-        #mic-lamp {
-            position: absolute; top: 15px; right: 15px; width: 18px; height: 18px;
-            border-radius: 50%; background: #333; border: 2px solid #fff; z-index: 20;
-        }
-
-        /* 💡 追加：ユーザーが自由にレンズをチェンジできる手動切り替えボタン（初期は非表示） */
+        /* ユーザーが自由にレンズをチェンジできる手動切り替えボタン（初期は非表示） */
         #camera-toggle-btn {
-            position: absolute; top: 15px; left: 15px; background: rgba(0, 0, 0, 0.7);
-            color: #fff; border: 2px solid #fff; padding: 10px 15px; font-size: 0.9rem;
-            font-weight: bold; border-radius: 20px; z-index: 30; display: none;
+            position: absolute; top: 15px; left: 15px; background: rgba(0, 0, 0, 0.8);
+            color: #fff; border: 2px solid #fff; padding: 12px 20px; font-size: 1rem;
+            font-weight: bold; border-radius: 25px; z-index: 30; display: none;
             pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent;
         }
 
@@ -104,7 +99,6 @@
         <button id="btn-finish" onclick="location.reload()">撮影を終了する</button>
     </div>
 
-    <div id="mic-lamp"></div>
     <video id="v" autoplay playsinline muted></video>
     <canvas id="c"></canvas>
 
@@ -122,21 +116,21 @@
     const reaction = document.getElementById('ai-reaction');
     const toast = document.getElementById('warning-toast');
     const target = document.getElementById('target-box');
-    const micLamp = document.getElementById('mic-lamp');
     const finishLayer = document.getElementById('finish-layer');
     const dialogLayer = document.getElementById('dialog-layer');
     const toggleBtn = document.getElementById('camera-toggle-btn');
 
-    let audioCtx, analyser, audioData, localStream;
+    let localStream = null;
     let currentStep = 0;
     let lastImgData = null;
     let staticCount = 0;
     let isActive = false;
-    let recognition;
+    let recognition = null;
     let capturedText = "";
     let detectedName = ""; 
     let isDeepMode = false; 
-    let currentFacingMode = "user"; // 現在のカメラ状態 (user=イン, environment=アウト)
+    let currentFacingMode = "user"; 
+    let silenceTimer = null; // 2秒沈黙用の新タイマーシステム
 
     const steps = [
         { msg: "こんにちは、AIディレクターです。まずは、カメラに向かって自己紹介をお願い致します。", type: "voice_name" },
@@ -147,8 +141,41 @@
         { msg: "貴重な話をありがとうございます。追加で話しておきたいことはありますか？", type: "last_call" }
     ];
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
+    // 💡 確実なカメラ切り替えを保証するリブート関数
+    async function startCamera(facingMode) {
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop()); // 古いレンズを完全にシャットダウン
+            v.srcObject = null;
+        }
+        
+        currentFacingMode = facingMode;
+        v.style.transform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
+
+        const constraints = {
+            video: { facingMode: { exact: facingMode }, width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: true
+        };
+
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch(err) {
+            // exactで失敗した場合のセーフティ（一部のAndroid対策）
+            constraints.video.facingMode = facingMode;
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        }
+        
+        v.srcObject = localStream;
+        await v.play();
+    }
+
+    // 音声認識（文字起こし）の初期化と沈黙検知の統合
+    function initSpeechRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert("このブラウザは音声認識をサポートしていません。Chromeでお試しください。");
+            return;
+        }
+        
         recognition = new SpeechRecognition();
         recognition.lang = 'ja-JP';
         recognition.interimResults = true;
@@ -158,18 +185,52 @@
             const result = event.results[event.results.length - 1];
             const transcript = result[0].transcript;
             
+            // 話している間は、沈黙2秒タイマーを常にリセットして引き延ばす
+            if (silenceTimer) clearTimeout(silenceTimer);
+
             if (currentStep === 1) {
-                detectedName = transcript.replace(/(です|と言います|私は|私の名前は|と申します)/g, "");
+                detectedName = transcript.replace(/(です|と言います|私は|私の名前は|と申します)/g, "").trim();
             }
 
             if (result.isFinal) {
                 capturedText += transcript;
             }
 
+            // 反応ワード
             if (transcript.match(/(昔|前|以前|苦労|大変|家族|父|母|仕事|地元|故郷|挫折|裏切り|恋|思い出|忘れられない|ほしかった|後悔|約束|別れ|旅立ち|宝物)/)) {
                 showReaction("なるほど...");
             }
+
+            // 💡 確実な2秒沈黙検知ロジック（マイクの競合に依存しない方式へ変更）
+            const stepInside = steps[currentStep-1];
+            if (isActive && (stepInside?.type === "voice_name" || stepInside?.type === "confirm" || stepInside?.type === "voice_deep" || stepInside?.type === "voice_more")) {
+                silenceTimer = setTimeout(() => {
+                    handleSilenceEnd(stepInside);
+                }, 2000); // 2秒間発話が途切れたら確定
+            }
         };
+
+        // 万が一途中で切れても自動で再起動するセーフティ
+        recognition.onend = () => {
+            if (isActive) recognition.start();
+        };
+
+        recognition.start();
+    }
+
+    function handleSilenceEnd(stepInside) {
+        if (stepInside.type === "voice_deep" && !isDeepMode) {
+            generateDeepQuestion();
+        } 
+        else if (stepInside.type === "voice_deep" && isDeepMode) {
+            showEndDialog();
+        } 
+        else if (stepInside.type === "voice_more") {
+            showEndDialog();
+        } 
+        else {
+            next();
+        }
     }
 
     function showReaction(text) {
@@ -178,147 +239,73 @@
         setTimeout(() => { reaction.style.opacity = 0; }, 2000);
     }
 
-    // 💡 レンズを動的に切り替えるストリーム再起動関数
-    async function startCamera(facingMode) {
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop()); // 起動中の古いカメラを完全に停止
-        }
-        currentFacingMode = facingMode;
-        
-        // インカメラの時だけ鏡のように反転させるCSS制御
-        v.style.transform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
-
-        const constraints = {
-            video: { facingMode: facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
-            audio: true
-        };
-
-        localStream = await navigator.mediaDevices.getUserMedia(constraints);
-        v.srcObject = localStream;
-        return localStream;
-    }
-
     document.getElementById('btn-run').onclick = async () => {
         try {
-            // 💡 対策①：Androidマイク競合バグを根絶する起動順序の分離
-            if (recognition) recognition.start(); 
-
-            // 文字起こしマイクが完全に確保されるまで150ミリ秒だけ待ってからAudioContextを起動
-            await new Promise(resolve => setTimeout(resolve, 150));
-
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
-            const stream = await startCamera("user"); // 最初はインカメラでスタート
+            await startCamera("user"); // 最初はインカメラで確実に立ち上げる
+            document.getElementById('start-screen').style.display = 'none';
+            isActive = true;
             
-            const source = audioCtx.createMediaStreamSource(stream);
-            analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 256;
-            source.connect(analyser);
-            audioData = new Uint8Array(analyser.frequencyBinCount);
-            
-            if (audioCtx.state === 'suspended') await audioCtx.resume();
-
-            v.onloadedmetadata = async () => {
-                try {
-                    await v.play();
-                    document.getElementById('start-screen').style.display = 'none';
-                    isActive = true;
-                    next();
-                    loop();
-                } catch(videoErr) {
-                    alert("映像の起動に失敗しました。画面を一度タップしてください。");
-                }
-            };
+            initSpeechRecognition(); // 音声認識をマイク単独占有で起動！
+            next();
+            loop();
         } catch (e) { 
-            alert("カメラまたはマイクのアクセスに失敗しました。設定を確認してください。"); 
+            console.error(e);
+            alert("カメラ・マイクの起動に失敗しました。ブラウザの権限設定を確認してください。"); 
         }
     };
 
-    // ユーザー自身が手動でカメラを切り替えるボタンの挙動
+    // ユーザー自身が手動でカメラを切り替えるボタン
     async function toggleCameraHandy() {
         const targetMode = currentFacingMode === "user" ? "environment" : "user";
         await startCamera(targetMode);
     }
 
     function loop() {
-        if (!isActive) return;
+        if (!isActive) { requestAnimationFrame(loop); return; }
 
         c.width = 160; c.height = 120;
-        ctx.drawImage(v, 0, 0, c.width, c.height);
-        const currentImgData = ctx.getImageData(0, 0, c.width, c.height);
+        try {
+            ctx.drawImage(v, 0, 0, c.width, c.height);
+            const currentImgData = ctx.getImageData(0, 0, c.width, c.height);
 
-        if (lastImgData) {
-            let diff = 0;
-            for (let i = 0; i < currentImgData.data.length; i += 4) {
-                const oldVal = (lastImgData.data[i] + lastImgData.data[i+1] + lastImgData.data[i+2]) / 3;
-                const newVal = (currentImgData.data[i] + currentImgData.data[i+1] + currentImgData.data[i+2]) / 3;
-                diff += Math.abs(newVal - oldVal);
-            }
-            const movementScore = diff / (c.width * c.height);
-            const step = steps[currentStep-1];
+            if (lastImgData) {
+                let diff = 0;
+                for (let i = 0; i < currentImgData.data.length; i += 4) {
+                    const oldVal = (lastImgData.data[i] + lastImgData.data[i+1] + lastImgData.data[i+2]) / 3;
+                    const newVal = (currentImgData.data[i] + currentImgData.data[i+1] + currentImgData.data[i+2]) / 3;
+                    diff += Math.abs(newVal - oldVal);
+                }
+                const movementScore = diff / (c.width * c.height);
+                const step = steps[currentStep-1];
 
-            if (step?.type === "pan_timer" || step?.type === "lock") {
-                if (movementScore > 20) { 
-                    if (window.toastTimer) { clearTimeout(window.toastTimer); window.toastTimer = null; }
-                    toast.style.display = "block";
-                } else if (movementScore < 10) { 
-                    if (!window.toastTimer && toast.style.display === "block") {
-                        window.toastTimer = setTimeout(() => { toast.style.display = "none"; window.toastTimer = null; }, 1000); 
+                // 1秒残像タイマー
+                if (step?.type === "pan_timer" || step?.type === "lock") {
+                    if (movementScore > 20) { 
+                        if (window.toastTimer) { clearTimeout(window.toastTimer); window.toastTimer = null; }
+                        toast.style.display = "block";
+                    } else if (movementScore < 10) { 
+                        if (!window.toastTimer && toast.style.display === "block") {
+                            window.toastTimer = setTimeout(() => { toast.style.display = "none"; window.toastTimer = null; }, 1000); 
+                        }
+                    }
+                }
+
+                if (step?.type === "lock") {
+                    if (movementScore < 6) { 
+                        staticCount++;
+                        if (staticCount > 90) { 
+                            target.style.display = "block";
+                            staticCount = 0;
+                            setTimeout(next, 1000); 
+                        }
+                    } else {
+                        staticCount = 0; 
+                        target.style.display = "none";
                     }
                 }
             }
-
-            if (step?.type === "lock") {
-                if (movementScore < 6) { 
-                    staticCount++;
-                    if (staticCount > 90) { 
-                        target.style.display = "block";
-                        staticCount = 0;
-                        setTimeout(next, 1000); 
-                    }
-                } else {
-                    staticCount = 0; 
-                    target.style.display = "none";
-                }
-            }
-        }
-        lastImgData = currentImgData;
-
-        analyser.getByteFrequencyData(audioData);
-        const vol = audioData.reduce((a,b)=>a+b,0)/audioData.length;
-        micLamp.style.background = vol > 10 ? "#0f0" : "#333";
-
-        const stepInside = steps[currentStep-1];
-        if (isActive && (stepInside?.type === "voice_name" || stepInside?.type === "confirm" || stepInside?.type === "voice_deep" || stepInside?.type === "voice_more")) {
-            
-            if (vol > 15) {
-                window.speechDetected = true;
-                window.silenceStart = null; 
-            }
-            
-            if (window.speechDetected && vol < 5) {
-                if (!window.silenceStart) window.silenceStart = Date.now();
-                
-                if (Date.now() - window.silenceStart > 2000) { 
-                    
-                    if (stepInside.type === "voice_deep" && !isDeepMode) {
-                        generateDeepQuestion();
-                        window.speechDetected = false;
-                        window.silenceStart = null;
-                    } 
-                    else if (stepInside.type === "voice_deep" && isDeepMode) {
-                        showEndDialog();
-                    } 
-                    else if (stepInside.type === "voice_more") {
-                        showEndDialog();
-                    } 
-                    else {
-                        next();
-                        window.speechDetected = false;
-                        window.silenceStart = null;
-                    }
-                }
-            }
-        }
+            lastImgData = currentImgData;
+        } catch(e) { /* 切り替え瞬間の描画エラーを無視 */ }
 
         requestAnimationFrame(loop);
     }
@@ -344,15 +331,13 @@
         capturedText = ""; 
         isDeepMode = true; 
 
-        // 💡 対策③：「これですね」の深掘りフェーズに入ったら、手動カメラ切り替えボタンを露出！
+        // 「これですね」の深掘りフェーズに入ったら、手動カメラ切り替えボタンを確実に露出！
         toggleBtn.style.display = "block";
     }
 
     function showEndDialog() {
         caption.innerText = "お話、ありがとうございます。撮影を終えますか？";
         dialogLayer.style.display = "flex"; 
-        window.speechDetected = false;
-        window.silenceStart = null;
     }
 
     function selectChoice(action) {
@@ -360,13 +345,11 @@
         
         if (action === 'end') {
             isDeepMode = false;
-            toggleBtn.style.display = "none"; // 終了時はボタンを消す
+            toggleBtn.style.display = "none"; 
             next(); 
         } else {
             caption.innerText = "もっと聞かせてください。その奥には、どんな物語がありますか？";
             steps[currentStep-1].type = "voice_more"; 
-            window.speechDetected = false;
-            window.silenceStart = null;
         }
     }
 
@@ -375,18 +358,18 @@
         const s = steps[currentStep];
 
         if (s.type === "confirm") {
-            const name = detectedName.trim() || "渡辺睦";
+            const name = detectedName || "渡辺睦";
             s.msg = `ありがとうございます。お名前は ${name} さんでよいですね？`;
         }
 
-        // 💡 対策②："部屋全体を撮影してください"（ステップ③）に入った瞬間に、アウトカメラへ自動切り替え！
+        // "部屋全体を撮影してください"（ステップ③）でアウトカメラへ自動切り替え
         if (s.type === "pan_timer") {
             caption.innerText = s.msg;
             caption.style.opacity = 1;
             currentStep++;
             try {
-                await startCamera("environment"); // アウトカメラ（背面）を起動
-            } catch(e) { console.error("アウトカメラへの自動切り替えに失敗", e); }
+                await startCamera("environment"); // 背面カメラを強制起動
+            } catch(e) { console.error(e); }
             setTimeout(next, s.t);
             return;
         }
