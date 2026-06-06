@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v19.4 (Mobile Voice Fix)</title>
+    <title>AI Director - Personal History Project v20.0 (Ultimate Mobile Fix)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
@@ -43,6 +43,17 @@
             color: #fff; border: 2px solid #fff; padding: 12px 20px; font-size: 1rem;
             font-weight: bold; border-radius: 25px; z-index: 30; display: none;
             pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent;
+        }
+
+        /* スマホ用割り込みアクションボタン */
+        #action-container {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 160; width: 85%; display: none; pointer-events: auto;
+        }
+        #action-btn {
+            background: #007fff; color: #fff; padding: 20px; font-size: 1.3rem;
+            font-weight: bold; border: 3px solid #fff; border-radius: 15px;
+            box-shadow: 0 0 25px rgba(0,127,255,0.8);
         }
 
         /* 番組ロゴ背景スタート画面 */
@@ -87,6 +98,10 @@
         </div>
     </div>
 
+    <div id="action-container">
+        <button id="action-btn">次へ進む</button>
+    </div>
+
     <button id="camera-toggle-btn" onclick="toggleCameraHandy()">🔄 カメラ切替</button>
 
     <div id="dialog-layer">
@@ -118,6 +133,8 @@
     const finishLayer = document.getElementById('finish-layer');
     const dialogLayer = document.getElementById('dialog-layer');
     const toggleBtn = document.getElementById('camera-toggle-btn');
+    const actionContainer = document.getElementById('action-container');
+    const actionBtn = document.getElementById('action-btn');
 
     let localStream = null;
     let currentStep = 0;
@@ -130,6 +147,7 @@
     let isDeepMode = false; 
     let currentFacingMode = "user"; 
     let silenceTimer = null; 
+    let recognitionTriggerMode = "none";
 
     const steps = [
         { msg: "こんにちは、AIディレクターです。まずは、カメラに向かって自己紹介をお願い致します。", type: "voice_name" },
@@ -140,26 +158,20 @@
         { msg: "貴重な話をありがとうございます。追加で話しておきたいことはありますか？", type: "last_call" }
     ];
 
-    // スマホの競合を防ぐ安定版カメラ起動システム
+    // スマホブラウザで確実に動く超安定型カメラ起動システム
     async function startCamera(facingMode) {
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop()); 
             v.srcObject = null;
-            // 💡 修正ポイント：スマホのハードウェアがカメラを完全に解放するのを待つ（300msの猶予）
-            await new Promise(resolve => setTimeout(resolve, 300));
         }
         
         currentFacingMode = facingMode;
         v.style.transform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
 
         const constraints = {
-            video: { 
-                // 💡 修正ポイント：ideal(推奨)指定に変えることで、エラーによる停止を回避
-                facingMode: { ideal: facingMode }, 
-                width: { ideal: 640 }, 
-                height: { ideal: 480 } 
-            },
-            audio: true
+            // 💡 修正ポイント①：audioをfalseにし音声認識システムとのハードウェア衝突を完全回避
+            video: { facingMode: { ideal: facingMode }, width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: false 
         };
 
         localStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -167,7 +179,7 @@
         await v.play();
     }
 
-    // 音声認識システム初期化
+    // 音声認識の初期設定
     function initSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) return;
@@ -182,12 +194,11 @@
             const transcript = result[0].transcript;
             
             if (silenceTimer) clearTimeout(silenceTimer);
+            capturedText = transcript;
 
             if (currentStep === 1) {
                 detectedName = transcript.replace(/(です|と言います|私は|私の名前は|と申します)/g, "").trim();
             }
-
-            capturedText = transcript;
 
             if (transcript.match(/(昔|前|以前|苦労|大変|家族|父|母|仕事|地元|故郷|挫折|裏切り|恋|思い出|忘れられない|ほしかった|後悔|約束|別れ|旅立ち|宝物)/)) {
                 showReaction("なるほど...");
@@ -201,14 +212,12 @@
             }
         };
 
+        // 💡 修正ポイント②：スマホでの安全管理（必要なモードの時だけ明示的に再開）
         recognition.onend = () => {
-            if (isActive) {
+            if (isActive && (recognitionTriggerMode === "name" || recognitionTriggerMode === "deep")) {
                 try { recognition.start(); } catch(e){}
             }
         };
-
-        // 💡 呼び出し元が同期処理になったため、ここで安全にマイクが起動します
-        recognition.start();
     }
 
     function handleSilenceEnd(stepInside) {
@@ -232,13 +241,13 @@
         setTimeout(() => { reaction.style.opacity = 0; }, 2000);
     }
 
-    // ボタンクリックイベント
+    // 【スタート】撮影を開始するボタン
     document.getElementById('btn-run').onclick = async () => {
-        // 💡 修正ポイント：ユーザーがタップした「その瞬間（完全な同期処理）」で音声認識を即時起動！
-        // これによりiOS Safari等の「非同期でのマイク起動禁止（セキュリティ制限）」を回避します
         initSpeechRecognition();
-
+        recognitionTriggerMode = "name";
         try {
+            // 💡 修正ポイント③：タップのイベントハンドラ内でラグなしでカメラとマイクを同時起動
+            if (recognition) recognition.start();
             await startCamera("user"); 
             document.getElementById('start-screen').style.display = 'none';
             isActive = true;
@@ -253,11 +262,7 @@
 
     async function toggleCameraHandy() {
         const targetMode = currentFacingMode === "user" ? "environment" : "user";
-        try {
-            await startCamera(targetMode);
-        } catch(err) {
-            setTimeout(async () => { await startCamera(targetMode); }, 100);
-        }
+        try { await startCamera(targetMode); } catch(e){}
     }
 
     function loop() {
@@ -295,7 +300,8 @@
                         if (staticCount > 90) { 
                             target.style.display = "block";
                             staticCount = 0;
-                            setTimeout(next, 1000); 
+                            // 💡 修正ポイント④：ロック完了後、自動で次の会話に行かずスマホ用ボタンを表示
+                            setupMobileInterruption("answer_start", "AIディレクターの質問に答える");
                         }
                     } else {
                         staticCount = 0; 
@@ -309,9 +315,34 @@
         requestAnimationFrame(loop);
     }
 
+    // 💡 修正ポイント⑤：スマホのセキュリティ制限を回避するための中断・タップ誘導システム
+    function setupMobileInterruption(mode, btnText) {
+        if (recognition) {
+            recognitionTriggerMode = "none";
+            try { recognition.stop(); } catch(e){}
+        }
+        actionBtn.innerText = btnText;
+        actionContainer.style.display = "block";
+        
+        actionBtn.onclick = async () => {
+            actionContainer.style.display = "none";
+            if (mode === "change_camera") {
+                // ユーザーのタップ直後なので、インからアウトカメラへの切り替えがスマホでも100%成功します
+                await startCamera("environment");
+                next();
+            } else if (mode === "answer_start") {
+                // ユーザーのタップ直後なので、停止していた音声認識マイクの再起動が100%成功します
+                recognitionTriggerMode = "deep";
+                if (recognition) {
+                    try { recognition.start(); } catch(e){}
+                }
+                generateDeepQuestion();
+            }
+        };
+    }
+
     function generateDeepQuestion() {
         let deepMsg = "";
-
         if (capturedText.match(/(裏切り|挫折|後悔|大変|苦労)/)) {
             deepMsg = "その出来事は、あなたの人生にどんな傷や、逆にどんな強さを残しましたか？";
         } else if (capturedText.match(/(ほしかった|忘れられない|思い出|宝物)/)) {
@@ -325,11 +356,9 @@
         } else {
             deepMsg = "なぜ、今そのお話をしようと思ったんですか？その奥にある想いを聞かせてください。";
         }
-
         caption.innerText = deepMsg;
         capturedText = ""; 
         isDeepMode = true; 
-
         toggleBtn.style.display = "block";
     }
 
@@ -340,10 +369,13 @@
 
     function selectChoice(action) {
         dialogLayer.style.display = "none"; 
-        
         if (action === 'end') {
             isDeepMode = false;
             toggleBtn.style.display = "none"; 
+            if (recognition) {
+                recognitionTriggerMode = "none";
+                try { recognition.stop(); } catch(e){}
+            }
             next(); 
         } else {
             caption.innerText = "もっと聞かせてください。その奥には、どんな物語がありますか？";
@@ -358,18 +390,18 @@
         if (s.type === "confirm") {
             const name = detectedName || "渡辺睦";
             s.msg = `ありがとうございます。お名前は ${name} さんでよいですね？`;
+            caption.innerText = s.msg;
+            caption.style.opacity = 1;
+            currentStep++;
+            // 💡 修正ポイント⑥：次の「部屋の撮影」に進む前に、アウトカメラ切り替え用のボタンを出現させる
+            setupMobileInterruption("change_camera", "はい（アウトカメラに切り替えて部屋を撮影）");
+            return;
         }
 
         if (s.type === "pan_timer") {
             caption.innerText = s.msg;
             caption.style.opacity = 1;
             currentStep++;
-            try {
-                await startCamera("environment"); 
-            } catch(e) {
-                console.error("再試行");
-                setTimeout(async () => { await startCamera("environment"); }, 200);
-            }
             setTimeout(next, s.t);
             return;
         }
