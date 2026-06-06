@@ -140,18 +140,25 @@
         { msg: "貴重な話をありがとうございます。追加で話しておきたいことはありますか？", type: "last_call" }
     ];
 
-    // エラーの起きない安全なカメラ起動システム
+    // スマホの競合を防ぐ安定版カメラ起動システム
     async function startCamera(facingMode) {
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop()); 
             v.srcObject = null;
+            // 💡 修正ポイント：スマホのハードウェアがカメラを完全に解放するのを待つ（300msの猶予）
+            await new Promise(resolve => setTimeout(resolve, 300));
         }
         
         currentFacingMode = facingMode;
         v.style.transform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
 
         const constraints = {
-            video: { facingMode: facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
+            video: { 
+                // 💡 修正ポイント：ideal(推奨)指定に変えることで、エラーによる停止を回避
+                facingMode: { ideal: facingMode }, 
+                width: { ideal: 640 }, 
+                height: { ideal: 480 } 
+            },
             audio: true
         };
 
@@ -160,17 +167,15 @@
         await v.play();
     }
 
-    // 💡 Android Chromeの仕様の壁を破壊する、新・音声認識システム
+    // 音声認識システム初期化
     function initSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) return;
         
         recognition = new SpeechRecognition();
         recognition.lang = 'ja-JP';
-        
-        // Android対策：確定を待たずに途中経過を取得し、連続認識のフリーズを回避
         recognition.interimResults = true; 
-        recognition.continuous = false; // 💡ここをfalseにすることで、スマホ側で確実に発話が区切られます
+        recognition.continuous = false; 
 
         recognition.onresult = (event) => {
             const result = event.results[event.results.length - 1];
@@ -178,20 +183,16 @@
             
             if (silenceTimer) clearTimeout(silenceTimer);
 
-            // Androidがサボる確定（isFinal）を待たずに、リアルタイムに名前を常時上書き抽出！
             if (currentStep === 1) {
                 detectedName = transcript.replace(/(です|と言います|私は|私の名前は|と申します)/g, "").trim();
             }
 
-            // リアルタイムに文章を蓄積
             capturedText = transcript;
 
-            // 反応ワード
             if (transcript.match(/(昔|前|以前|苦労|大変|家族|父|母|仕事|地元|故郷|挫折|裏切り|恋|思い出|忘れられない|ほしかった|後悔|約束|別れ|旅立ち|宝物)/)) {
                 showReaction("なるほど...");
             }
 
-            // 2秒間、発話に変化がなかったら沈黙として安全にステップ移行
             const stepInside = steps[currentStep-1];
             if (isActive && (stepInside?.type === "voice_name" || stepInside?.type === "confirm" || stepInside?.type === "voice_deep" || stepInside?.type === "voice_more")) {
                 silenceTimer = setTimeout(() => {
@@ -200,14 +201,13 @@
             }
         };
 
-        // continuous=falseにしたため、話し終わる（または沈黙する）と自動でonendが走ります
-        // そこを逆手に取り、即座に次の認識をリスタートさせることで、スマホでも永久にマイクを繋ぎ続けます
         recognition.onend = () => {
             if (isActive) {
                 try { recognition.start(); } catch(e){}
             }
         };
 
+        // 💡 呼び出し元が同期処理になったため、ここで安全にマイクが起動します
         recognition.start();
     }
 
@@ -232,16 +232,16 @@
         setTimeout(() => { reaction.style.opacity = 0; }, 2000);
     }
 
+    // ボタンクリックイベント
     document.getElementById('btn-run').onclick = async () => {
+        // 💡 修正ポイント：ユーザーがタップした「その瞬間（完全な同期処理）」で音声認識を即時起動！
+        // これによりiOS Safari等の「非同期でのマイク起動禁止（セキュリティ制限）」を回避します
+        initSpeechRecognition();
+
         try {
             await startCamera("user"); 
             document.getElementById('start-screen').style.display = 'none';
             isActive = true;
-            
-            // 映像が動き出してから安全にマイクを起動
-            setTimeout(() => {
-                initSpeechRecognition();
-            }, 500);
 
             next();
             loop();
