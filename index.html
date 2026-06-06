@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v19.3 (Mobile Master)</title>
+    <title>AI Director - Personal History Project v19.4 (Mobile Voice Fix)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
         
-        /* インカメラ時はJavaScript側で反転、アウトカメラ時は正像に動的制御 */
         video { width: 100%; height: 100%; object-fit: cover; }
         canvas { display: none; }
         .ui { position: absolute; z-index: 10; width: 100%; text-align: center; pointer-events: none; left: 0; }
@@ -38,7 +37,7 @@
             display: none; box-shadow: 0 0 30px #f00; z-index: 5;
         }
 
-        /* ユーザーが自由にレンズをチェンジできる手動切り替えボタン */
+        /* ユーザー手動カメラ切り替えボタン */
         #camera-toggle-btn {
             position: absolute; top: 15px; left: 15px; background: rgba(0, 0, 0, 0.8);
             color: #fff; border: 2px solid #fff; padding: 12px 20px; font-size: 1rem;
@@ -141,7 +140,7 @@
         { msg: "貴重な話をありがとうございます。追加で話しておきたいことはありますか？", type: "last_call" }
     ];
 
-    // 💡 エラーの起きない安全なカメラ起動システム（exactを排除）
+    // エラーの起きない安全なカメラ起動システム
     async function startCamera(facingMode) {
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop()); 
@@ -151,7 +150,6 @@
         currentFacingMode = facingMode;
         v.style.transform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
 
-        // Androidがエラーを起こさないための柔軟な設定（ideal）に変更
         const constraints = {
             video: { facingMode: facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
             audio: true
@@ -162,15 +160,17 @@
         await v.play();
     }
 
-    // 音声認識（文字起こし）の安全起動
+    // 💡 Android Chromeの仕様の壁を破壊する、新・音声認識システム
     function initSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) return;
         
         recognition = new SpeechRecognition();
         recognition.lang = 'ja-JP';
-        recognition.interimResults = true;
-        recognition.continuous = true;
+        
+        // Android対策：確定を待たずに途中経過を取得し、連続認識のフリーズを回避
+        recognition.interimResults = true; 
+        recognition.continuous = false; // 💡ここをfalseにすることで、スマホ側で確実に発話が区切られます
 
         recognition.onresult = (event) => {
             const result = event.results[event.results.length - 1];
@@ -178,18 +178,20 @@
             
             if (silenceTimer) clearTimeout(silenceTimer);
 
+            // Androidがサボる確定（isFinal）を待たずに、リアルタイムに名前を常時上書き抽出！
             if (currentStep === 1) {
                 detectedName = transcript.replace(/(です|と言います|私は|私の名前は|と申します)/g, "").trim();
             }
 
-            if (result.isFinal) {
-                capturedText += transcript;
-            }
+            // リアルタイムに文章を蓄積
+            capturedText = transcript;
 
+            // 反応ワード
             if (transcript.match(/(昔|前|以前|苦労|大変|家族|父|母|仕事|地元|故郷|挫折|裏切り|恋|思い出|忘れられない|ほしかった|後悔|約束|別れ|旅立ち|宝物)/)) {
                 showReaction("なるほど...");
             }
 
+            // 2秒間、発話に変化がなかったら沈黙として安全にステップ移行
             const stepInside = steps[currentStep-1];
             if (isActive && (stepInside?.type === "voice_name" || stepInside?.type === "confirm" || stepInside?.type === "voice_deep" || stepInside?.type === "voice_more")) {
                 silenceTimer = setTimeout(() => {
@@ -198,6 +200,8 @@
             }
         };
 
+        // continuous=falseにしたため、話し終わる（または沈黙する）と自動でonendが走ります
+        // そこを逆手に取り、即座に次の認識をリスタートさせることで、スマホでも永久にマイクを繋ぎ続けます
         recognition.onend = () => {
             if (isActive) {
                 try { recognition.start(); } catch(e){}
@@ -228,15 +232,13 @@
         setTimeout(() => { reaction.style.opacity = 0; }, 2000);
     }
 
-    // 💡 スタートボタンを押した時の安全な順序制御
     document.getElementById('btn-run').onclick = async () => {
         try {
-            // 先にカメラを100%確実に起動させて画面に映す
             await startCamera("user"); 
             document.getElementById('start-screen').style.display = 'none';
             isActive = true;
             
-            // 映像が動き出してから、0.5秒のクッションを挟んで安全に音声認識を起動！
+            // 映像が動き出してから安全にマイクを起動
             setTimeout(() => {
                 initSpeechRecognition();
             }, 500);
@@ -245,18 +247,15 @@
             loop();
         } catch (e) { 
             console.error(e);
-            alert("スマホのカメラ起動に失敗しました。Chromeのアドレスバー横のアイコンから、マイクとカメラの『権限』が許可されているか確認してください。"); 
+            alert("スマホのカメラ起動に失敗しました。権限を確認してください。"); 
         }
     };
 
-    // ユーザー自身が手動でカメラを切り替えるボタン（安全クッション付き）
     async function toggleCameraHandy() {
         const targetMode = currentFacingMode === "user" ? "environment" : "user";
         try {
             await startCamera(targetMode);
         } catch(err) {
-            // スマホ固有のレンズ競合エラーが起きた場合のセーフティ
-            console.error("切り替え再試行");
             setTimeout(async () => { await startCamera(targetMode); }, 100);
         }
     }
@@ -279,7 +278,6 @@
                 const movementScore = diff / (c.width * c.height);
                 const step = steps[currentStep-1];
 
-                // 1秒残像タイマー
                 if (step?.type === "pan_timer" || step?.type === "lock") {
                     if (movementScore > 20) { 
                         if (window.toastTimer) { clearTimeout(window.toastTimer); window.toastTimer = null; }
@@ -332,7 +330,6 @@
         capturedText = ""; 
         isDeepMode = true; 
 
-        // 深掘りに入ったら、手動カメラ切り替えボタンを確実に露出！
         toggleBtn.style.display = "block";
     }
 
@@ -363,13 +360,12 @@
             s.msg = `ありがとうございます。お名前は ${name} さんでよいですね？`;
         }
 
-        // "部屋全体を撮影してください"（ステップ③）でアウトカメラへ自動切り替え
         if (s.type === "pan_timer") {
             caption.innerText = s.msg;
             caption.style.opacity = 1;
             currentStep++;
             try {
-                await startCamera("environment"); // 背面カメラをエラーなく起動
+                await startCamera("environment"); 
             } catch(e) {
                 console.error("再試行");
                 setTimeout(async () => { await startCamera("environment"); }, 200);
