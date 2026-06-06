@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v19.2 (Mobile Fix)</title>
+    <title>AI Director - Personal History Project v19.3 (Mobile Master)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
@@ -38,7 +38,7 @@
             display: none; box-shadow: 0 0 30px #f00; z-index: 5;
         }
 
-        /* ユーザーが自由にレンズをチェンジできる手動切り替えボタン（初期は非表示） */
+        /* ユーザーが自由にレンズをチェンジできる手動切り替えボタン */
         #camera-toggle-btn {
             position: absolute; top: 15px; left: 15px; background: rgba(0, 0, 0, 0.8);
             color: #fff; border: 2px solid #fff; padding: 12px 20px; font-size: 1rem;
@@ -130,7 +130,7 @@
     let detectedName = ""; 
     let isDeepMode = false; 
     let currentFacingMode = "user"; 
-    let silenceTimer = null; // 2秒沈黙用の新タイマーシステム
+    let silenceTimer = null; 
 
     const steps = [
         { msg: "こんにちは、AIディレクターです。まずは、カメラに向かって自己紹介をお願い致します。", type: "voice_name" },
@@ -141,40 +141,31 @@
         { msg: "貴重な話をありがとうございます。追加で話しておきたいことはありますか？", type: "last_call" }
     ];
 
-    // 💡 確実なカメラ切り替えを保証するリブート関数
+    // 💡 エラーの起きない安全なカメラ起動システム（exactを排除）
     async function startCamera(facingMode) {
         if (localStream) {
-            localStream.getTracks().forEach(track => track.stop()); // 古いレンズを完全にシャットダウン
+            localStream.getTracks().forEach(track => track.stop()); 
             v.srcObject = null;
         }
         
         currentFacingMode = facingMode;
         v.style.transform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
 
+        // Androidがエラーを起こさないための柔軟な設定（ideal）に変更
         const constraints = {
-            video: { facingMode: { exact: facingMode }, width: { ideal: 640 }, height: { ideal: 480 } },
+            video: { facingMode: facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
             audio: true
         };
 
-        try {
-            localStream = await navigator.mediaDevices.getUserMedia(constraints);
-        } catch(err) {
-            // exactで失敗した場合のセーフティ（一部のAndroid対策）
-            constraints.video.facingMode = facingMode;
-            localStream = await navigator.mediaDevices.getUserMedia(constraints);
-        }
-        
+        localStream = await navigator.mediaDevices.getUserMedia(constraints);
         v.srcObject = localStream;
         await v.play();
     }
 
-    // 音声認識（文字起こし）の初期化と沈黙検知の統合
+    // 音声認識（文字起こし）の安全起動
     function initSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            alert("このブラウザは音声認識をサポートしていません。Chromeでお試しください。");
-            return;
-        }
+        if (!SpeechRecognition) return;
         
         recognition = new SpeechRecognition();
         recognition.lang = 'ja-JP';
@@ -185,7 +176,6 @@
             const result = event.results[event.results.length - 1];
             const transcript = result[0].transcript;
             
-            // 話している間は、沈黙2秒タイマーを常にリセットして引き延ばす
             if (silenceTimer) clearTimeout(silenceTimer);
 
             if (currentStep === 1) {
@@ -196,23 +186,22 @@
                 capturedText += transcript;
             }
 
-            // 反応ワード
             if (transcript.match(/(昔|前|以前|苦労|大変|家族|父|母|仕事|地元|故郷|挫折|裏切り|恋|思い出|忘れられない|ほしかった|後悔|約束|別れ|旅立ち|宝物)/)) {
                 showReaction("なるほど...");
             }
 
-            // 💡 確実な2秒沈黙検知ロジック（マイクの競合に依存しない方式へ変更）
             const stepInside = steps[currentStep-1];
             if (isActive && (stepInside?.type === "voice_name" || stepInside?.type === "confirm" || stepInside?.type === "voice_deep" || stepInside?.type === "voice_more")) {
                 silenceTimer = setTimeout(() => {
                     handleSilenceEnd(stepInside);
-                }, 2000); // 2秒間発話が途切れたら確定
+                }, 2000); 
             }
         };
 
-        // 万が一途中で切れても自動で再起動するセーフティ
         recognition.onend = () => {
-            if (isActive) recognition.start();
+            if (isActive) {
+                try { recognition.start(); } catch(e){}
+            }
         };
 
         recognition.start();
@@ -239,25 +228,37 @@
         setTimeout(() => { reaction.style.opacity = 0; }, 2000);
     }
 
+    // 💡 スタートボタンを押した時の安全な順序制御
     document.getElementById('btn-run').onclick = async () => {
         try {
-            await startCamera("user"); // 最初はインカメラで確実に立ち上げる
+            // 先にカメラを100%確実に起動させて画面に映す
+            await startCamera("user"); 
             document.getElementById('start-screen').style.display = 'none';
             isActive = true;
             
-            initSpeechRecognition(); // 音声認識をマイク単独占有で起動！
+            // 映像が動き出してから、0.5秒のクッションを挟んで安全に音声認識を起動！
+            setTimeout(() => {
+                initSpeechRecognition();
+            }, 500);
+
             next();
             loop();
         } catch (e) { 
             console.error(e);
-            alert("カメラ・マイクの起動に失敗しました。ブラウザの権限設定を確認してください。"); 
+            alert("スマホのカメラ起動に失敗しました。Chromeのアドレスバー横のアイコンから、マイクとカメラの『権限』が許可されているか確認してください。"); 
         }
     };
 
-    // ユーザー自身が手動でカメラを切り替えるボタン
+    // ユーザー自身が手動でカメラを切り替えるボタン（安全クッション付き）
     async function toggleCameraHandy() {
         const targetMode = currentFacingMode === "user" ? "environment" : "user";
-        await startCamera(targetMode);
+        try {
+            await startCamera(targetMode);
+        } catch(err) {
+            // スマホ固有のレンズ競合エラーが起きた場合のセーフティ
+            console.error("切り替え再試行");
+            setTimeout(async () => { await startCamera(targetMode); }, 100);
+        }
     }
 
     function loop() {
@@ -305,7 +306,7 @@
                 }
             }
             lastImgData = currentImgData;
-        } catch(e) { /* 切り替え瞬間の描画エラーを無視 */ }
+        } catch(e) { }
 
         requestAnimationFrame(loop);
     }
@@ -331,7 +332,7 @@
         capturedText = ""; 
         isDeepMode = true; 
 
-        // 「これですね」の深掘りフェーズに入ったら、手動カメラ切り替えボタンを確実に露出！
+        // 深掘りに入ったら、手動カメラ切り替えボタンを確実に露出！
         toggleBtn.style.display = "block";
     }
 
@@ -368,8 +369,11 @@
             caption.style.opacity = 1;
             currentStep++;
             try {
-                await startCamera("environment"); // 背面カメラを強制起動
-            } catch(e) { console.error(e); }
+                await startCamera("environment"); // 背面カメラをエラーなく起動
+            } catch(e) {
+                console.error("再試行");
+                setTimeout(async () => { await startCamera("environment"); }, 200);
+            }
             setTimeout(next, s.t);
             return;
         }
