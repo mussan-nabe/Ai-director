@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AI Director - Personal History Project v19.0 (Mobile)</title>
+    <style>
+        body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
+        #container { position: relative; width: 100vw; height: 100vh; }
+        
+        /* スマホの縦長画面に合わせてカメラ映像を綺麗にフィットさせる（インカメラ用に反転） */
+        video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        canvas { display: none; }
+        .ui { position: absolute; z-index: 10; width: 100%; text-align: center; pointer-events: none; left: 0; }
+        
+        /* スマホ画面用に文字サイズとパディングを最適化 */
+        #ai-caption {
+            top: 5%; background: rgba(255, 0, 0, 0.95); padding: 15px 10px;
+            font-size: 1.3rem; font-weight: bold; border: 2px solid #fff;
+            opacity: 0; transition: opacity 0.4s; min-height: 40px;
+            width: 90%; left: 5%; box-sizing: border-box;
+        }
+
+        #ai-reaction {
+            top: 25%; font-size: 1.4rem; color: #ffff00; font-weight: bold;
+            text-shadow: 2px 2px 4px #000; opacity: 0; transition: opacity 0.3s;
+        }
+
+        #warning-toast {
+            top: 42%; background: rgba(255, 255, 0, 0.95); color: #000;
+            padding: 15px 20px; font-size: 1.4rem; font-weight: bold;
+            display: none; border-radius: 10px; box-shadow: 0 0 30px #ff0;
+            z-index: 100; width: 80%; left: 10%; box-sizing: border-box;
+        }
+
+        /* スマホの画面幅に合わせて赤枠のサイズを調整（300pxから220pxへ） */
+        #target-box {
+            position: absolute; border: 5px solid #f00; width: 220px; height: 220px;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            display: none; box-shadow: 0 0 30px #f00; z-index: 5;
+        }
+
+        #mic-lamp {
+            position: absolute; top: 15px; right: 15px; width: 18px; height: 18px;
+            border-radius: 50%; background: #333; border: 2px solid #fff; z-index: 20;
+        }
+
+        /* 番組ロゴ背景スタート画面（スマホ縦長に最適化） */
+        #start-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #fff url('https://images.tango-frames.com/api/v1/images/f43f83.png') no-repeat center center;
+            background-size: contain; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 200; padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        #start-screen h1 { color: #000; text-shadow: 1px 1px 10px rgba(255,255,255,0.8); font-size: 1.8rem; font-weight: bold; margin-bottom: 15px; text-align: center; }
+        .terms { background: rgba(0, 0, 0, 0.90); color: #fff; padding: 15px; font-size: 0.85rem; max-width: 100%; margin-bottom: 25px; line-height: 1.6; border: 2px solid #f00; text-align: left; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+        .btn-group { display: flex; flex-direction: column; gap: 15px; width: 80%; }
+
+        #finish-layer { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: none; background: none; top: 80%; height: 20%; z-index: 210; }
+
+        /* スマホでもタップしやすい位置とサイズのダイアログボタン */
+        #dialog-layer {
+            position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%);
+            display: none; flex-direction: column; gap: 15px; z-index: 150; width: 80%;
+        }
+
+        button { padding: 18px 30px; font-size: 1.1rem; background: #f00; color: #fff; border: none; border-radius: 50px; cursor: pointer; pointer-events: auto; font-weight: bold; box-shadow: 0 5px 15px rgba(0,0,0,0.3); width: 100%; -webkit-tap-highlight-color: transparent; }
+        button:hover { background: #ff3333; }
+        button.cancel { background: #333; border: 1px solid #555; color: #fff; }
+        button.sub { background: #007fff; }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <div id="start-screen">
+        <h1>AIディレクター：自分史撮影</h1>
+        <div class="terms">
+            <h3 style="margin-top:0; color:#ff3333; font-size: 1rem;">【最初にお読みください】</h3>
+            ・本件において撮影された映像の著作権、肖像権についてはテレビ東京に帰属します。<br>
+            ・映像を撮影した後に、「編集を申し込む」ボタンを押した時点で料金が発生します。
+        </div>
+        <div class="btn-group">
+            <button id="btn-run">撮影を開始する</button>
+            <button class="cancel" onclick="location.reload();">キャンセル</button>
+        </div>
+    </div>
+
+    <div id="dialog-layer">
+        <button onclick="selectChoice('end')">🔴 撮影を終える</button>
+        <button class="sub" onclick="selectChoice('continue')">🔵 撮影を続ける</button>
+    </div>
+
+    <div id="finish-layer" class="ui">
+        <button id="btn-finish" onclick="location.reload()">撮影を終了する</button>
+    </div>
+
+    <div id="mic-lamp"></div>
+    <video id="v" autoplay playsinline muted></video>
+    <canvas id="c"></canvas>
+
+    <div id="ai-caption" class="ui"></div>
+    <div id="ai-reaction" class="ui"></div>
+    <div id="warning-toast" class="ui">⚠️ もっとゆっくりカメラを動かしてください</div>
+    <div id="target-box"></div>
+</div>
+
+<script>
+    const v = document.getElementById('v');
+    const c = document.getElementById('c');
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    const caption = document.getElementById('ai-caption');
+    const reaction = document.getElementById('ai-reaction');
+    const toast = document.getElementById('warning-toast');
+    const target = document.getElementById('target-box');
+    const micLamp = document.getElementById('mic-lamp');
+    const finishLayer = document.getElementById('finish-layer');
+    const dialogLayer = document.getElementById('dialog-layer');
+
+    let audioCtx, analyser, audioData;
+    let currentStep = 0;
+    let lastImgData = null;
+    let staticCount = 0;
+    let isActive = false;
+    let recognition;
+    let capturedText = "";
+    let detectedName = ""; 
+    let isDeepMode = false; 
+
+    const steps = [
+        { msg: "こんにちは、AIディレクターです。まずは、カメラに向かって自己紹介をお願い致します。", type: "voice_name" },
+        { msg: "", type: "confirm" }, 
+        { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 },
+        { msg: "では、あなたの大切なものを中央に映してください。じっと見つめます。", type: "lock" },
+        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_deep" },
+        { msg: "貴重な話をありがとうございます。追加で話しておきたいことはありますか？", type: "last_call" }
+    ];
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.lang = 'ja-JP';
+        recognition.interimResults = true;
+        recognition.continuous = true;
+
+        recognition.onresult = (event) => {
+            const result = event.results[event.results.length - 1];
+            const transcript = result[0].transcript;
+            
+            if (currentStep === 1) {
+                detectedName = transcript.replace(/(です|と言います|私は|私の名前は|と申します)/g, "");
+            }
+
+            if (result.isFinal) {
+                capturedText += transcript;
+            }
+
+            if (transcript.match(/(昔|前|以前|苦労|大変|家族|父|母|仕事|地元|故郷|挫折|裏切り|恋|思い出|忘れられない|ほしかった|後悔|約束|別れ|旅立ち|宝物)/)) {
+                showReaction("なるほど...");
+            }
+        };
+    }
+
+    function showReaction(text) {
+        reaction.innerText = text;
+        reaction.style.opacity = 1;
+        setTimeout(() => { reaction.style.opacity = 0; }, 2000);
+    }
+
+    document.getElementById('btn-run').onclick = async () => {
+        try {
+            // 💡 スマホ対策①：Android Chromeのマイク切断を防ぐ固定サンプルレート指定
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+                sampleRate: 44100
+            });
+
+            // 💡 スマホ対策②：インカメラ（user）を明示的に指定したConstraints設定
+            const constraints = {
+                video: { 
+                    facingMode: "user",
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                },
+                audio: true
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            v.srcObject = stream;
+            
+            const source = audioCtx.createMediaStreamSource(stream);
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+            audioData = new Uint8Array(analyser.frequencyBinCount);
+            
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
+            if (recognition) recognition.start();
+
+            v.onloadedmetadata = async () => {
+                try {
+                    // 💡 スマホ対策③：プログラミングによる再生強制拒否を回避するplay
+                    await v.play();
+                    document.getElementById('start-screen').style.display = 'none';
+                    isActive = true;
+                    next();
+                    loop();
+                } catch(videoErr) {
+                    console.error(videoErr);
+                    alert("映像の起動に失敗しました。画面を一度タップしてください。");
+                }
+            };
+        } catch (e) { 
+            console.error(e);
+            alert("カメラ・マイクのアクセスに失敗しました。ブラウザの設定でカメラとマイクの権限が「許可」になっているか確認してください。"); 
+        }
+    };
+
+    function loop() {
+        if (!isActive) return;
+
+        c.width = 160; c.height = 120;
+        ctx.drawImage(v, 0, 0, c.width, c.height);
+        const currentImgData = ctx.getImageData(0, 0, c.width, c.height);
+
+        if (lastImgData) {
+            let diff = 0;
+            for (let i = 0; i < currentImgData.data.length; i += 4) {
+                const oldVal = (lastImgData.data[i] + lastImgData.data[i+1] + lastImgData.data[i+2]) / 3;
+                const newVal = (currentImgData.data[i] + currentImgData.data[i+1] + currentImgData.data[i+2]) / 3;
+                diff += Math.abs(newVal - oldVal);
+            }
+            const movementScore = diff / (c.width * c.height);
+            const step = steps[currentStep-1];
+
+            // 1秒残像タイマーロジック（スマホ版へ完全移植）
+            if (step?.type === "pan_timer" || step?.type === "lock") {
+                if (movementScore > 20) { 
+                    if (window.toastTimer) {
+                        clearTimeout(window.toastTimer);
+                        window.toastTimer = null;
+                    }
+                    toast.style.display = "block";
+                } else if (movementScore < 10) { 
+                    if (!window.toastTimer && toast.style.display === "block") {
+                        window.toastTimer = setTimeout(() => {
+                            toast.style.display = "none";
+                            window.toastTimer = null;
+                        }, 1000); 
+                    }
+                }
+            }
+
+            if (step?.type === "lock") {
+                if (movementScore < 6) { 
+                    staticCount++;
+                    if (staticCount > 90) { 
+                        target.style.display = "block";
+                        staticCount = 0;
+                        setTimeout(next, 1000); 
+                    }
+                } else {
+                    staticCount = 0; 
+                    target.style.display = "none";
+                }
+            }
+        }
+        lastImgData = currentImgData;
+
+        analyser.getByteFrequencyData(audioData);
+        const vol = audioData.reduce((a,b)=>a+b,0)/audioData.length;
+        micLamp.style.background = vol > 10 ? "#0f0" : "#333";
+
+        const stepInside = steps[currentStep-1];
+        if (isActive && (stepInside?.type === "voice_name" || stepInside?.type === "confirm" || stepInside?.type === "voice_deep" || stepInside?.type === "voice_more")) {
+            
+            if (vol > 15) {
+                window.speechDetected = true;
+                window.silenceStart = null; 
+            }
+            
+            if (window.speechDetected && vol < 5) {
+                if (!window.silenceStart) window.silenceStart = Date.now();
+                
+                if (Date.now() - window.silenceStart > 2000) { 
+                    
+                    if (stepInside.type === "voice_deep" && !isDeepMode) {
+                        generateDeepQuestion();
+                        window.speechDetected = false;
+                        window.silenceStart = null;
+                    } 
+                    else if (stepInside.type === "voice_deep" && isDeepMode) {
+                        showEndDialog();
+                    } 
+                    else if (stepInside.type === "voice_more") {
+                        showEndDialog();
+                    } 
+                    else {
+                        next();
+                        window.speechDetected = false;
+                        window.silenceStart = null;
+                    }
+                }
+            }
+        }
+
+        requestAnimationFrame(loop);
+    }
+
+    function generateDeepQuestion() {
+        let deepMsg = "";
+
+        if (capturedText.match(/(裏切り|挫折|後悔|大変|苦労)/)) {
+            deepMsg = "その出来事は、あなたの人生にどんな傷や、逆にどんな強さを残しましたか？";
+        } else if (capturedText.match(/(ほしかった|忘れられない|思い出|宝物)/)) {
+            deepMsg = "今、それが手に入ったら、当時の自分に何と言ってあげたいですか？";
+        } else if (capturedText.match(/(恋|別れ|約束)/)) {
+            deepMsg = "そのお相手は、今のあなたの暮らしや頑張りを、どこかで見守ってくれている気がしますか？";
+        } else if (capturedText.match(/(家族|父|母|子供)/)) {
+            deepMsg = "そのこと、ご家族の方は何と仰っているんですか？";
+        } else if (capturedText.match(/(仕事|会社|旅立ち|地元|故郷)/)) {
+            deepMsg = "そこから離れて今に至るまでに、一番の心の支えになったものは何ですか？";
+        } else {
+            deepMsg = "なぜ、今そのお話をしようと思ったんですか？その奥にある想いを聞かせてください。";
+        }
+
+        caption.innerText = deepMsg;
+        capturedText = ""; 
+        isDeepMode = true; 
+    }
+
+    function showEndDialog() {
+        caption.innerText = "お話、ありがとうございます。撮影を終えますか？";
+        dialogLayer.style.display = "flex"; 
+        window.speechDetected = false;
+        window.silenceStart = null;
+    }
+
+    function selectChoice(action) {
+        dialogLayer.style.display = "none"; 
+        
+        if (action === 'end') {
+            isDeepMode = false;
+            next(); 
+        } else {
+            caption.innerText = "もっと聞かせてください。その奥には、どんな物語がありますか？";
+            steps[currentStep-1].type = "voice_more"; 
+            window.speechDetected = false;
+            window.silenceStart = null;
+        }
+    }
+
+    function next() {
+        if (currentStep >= steps.length) return;
+        const s = steps[currentStep];
+
+        if (s.type === "confirm") {
+            const name = detectedName.trim() || "渡辺睦";
+            s.msg = `ありがとうございます。お名前は ${name} さんでよいですね？`;
+        }
+
+        caption.innerText = s.msg;
+        caption.style.opacity = 1;
+        currentStep++;
+
+        if (s.type === "pan_timer") {
+            setTimeout(next, s.t);
+        }
+        
+        if (s.type === "last_call") {
+            finishLayer.style.display = "flex";
+        }
+    }
+</script>
+</body>
+</html>
