@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v23.0 (Clean UI Fix)</title>
+    <title>AI Director - Personal History Project v24.0 (Bottom UI Fix)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
@@ -45,10 +45,16 @@
             pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent;
         }
 
-        /* スマホ専用ステップ進行ボタン */
+        /* 💡 修正ポイント①：スマホ専用進行ボタンを画面の「一番下（bottom: 5%）」に配置 */
         #action-container {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 160; width: 85%; display: none; pointer-events: auto;
+            position: absolute; 
+            bottom: 5%; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            z-index: 160; 
+            width: 85%; 
+            display: none; 
+            pointer-events: auto;
         }
         #action-btn {
             background: #007fff; color: #fff; padding: 20px; font-size: 1.3rem;
@@ -98,7 +104,6 @@
         </div>
     </div>
 
-    <!-- スマホ専用ステップ進行ボタン -->
     <div id="action-container">
         <button id="action-btn">次へ進む</button>
     </div>
@@ -152,7 +157,7 @@
     let silenceTimer = null; 
 
     const steps = [
-        { msg: "こんにちは、AIディレクターです。まずはマイクに向かって自己紹介をお願い致します。", type: "voice_name" },
+        { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願い致します。", type: "voice_name" },
         { msg: "", type: "confirm" }, 
         { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 },
         { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" },
@@ -211,7 +216,6 @@
             }
 
             if (isActive) {
-                // PC用の2秒沈黙タイマー
                 silenceTimer = setTimeout(() => {
                     if (currentStep === 1) {
                         if (isMobile && recognition) { try{ recognition.stop(); }catch(e){} }
@@ -269,6 +273,7 @@
         await startCamera(targetMode);
     }
 
+    // 映像解析ループ
     function loop() {
         if (!isActive) { requestAnimationFrame(loop); return; }
 
@@ -306,7 +311,6 @@
                             staticCount = 0;
                             
                             if (isMobile) {
-                                // 💡 修正ポイント①：被るボタンを廃止し、自動で質問を表示して、最初から「話を終える」ボタンを設置！
                                 generateDeepQuestion();
                                 setupMobileAction("finish_talk", "話を終える（次へ進む）");
                             } else {
@@ -325,7 +329,7 @@
         requestAnimationFrame(loop);
     }
 
-    // スマホ用のアクション制御システム
+    // スマホ用アクション制御
     function setupMobileAction(mode, btnText) {
         actionBtn.innerText = btnText;
         actionContainer.style.display = "block";
@@ -337,7 +341,6 @@
                 loop(); 
                 next();
             } else if (mode === "finish_talk") {
-                // 「話を終える」を押したら次の確認ダイアログへ
                 showEndDialog();
             }
         };
@@ -377,11 +380,11 @@
             next(); 
         } else {
             caption.innerText = "もっと聞かせてください。その奥には、どんな物語がありますか？";
-            // 💡 修正ポイント②：追加で話す場合も、最初からシンプルに「話を終える」ボタンを表示
             setupMobileAction("finish_talk", "話を終える（次へ進む）");
         }
     }
 
+    // ステップ進行管理
     async function next() {
         if (currentStep >= steps.length) return;
         const s = steps[currentStep];
@@ -412,8 +415,10 @@
         caption.style.opacity = 1;
         currentStep++;
         
+        // 💡 修正ポイント②：「撮影を終了する」ボタンが出るタイミングで「話を終える」ボタンを確実に非表示にする
         if (s.type === "last_call") {
             finishLayer.style.display = "flex";
+            actionContainer.style.display = "none"; 
         }
     }
 </script>
