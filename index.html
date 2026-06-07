@@ -299,10 +299,10 @@
                 const step = steps[currentStep-1];
 
                 if (step?.type === "pan_timer" || step?.type === "lock") {
-                    if (movementScore > 30) { 
+                    if (movementScore > 40) { 
                         if (window.toastTimer) { clearTimeout(window.toastTimer); window.toastTimer = null; }
                         toast.style.display = "block";
-                    } else if (movementScore < 20) { 
+                    } else if (movementScore < 30) { 
                         if (!window.toastTimer && toast.style.display === "block") {
                             window.toastTimer = setTimeout(() => { toast.style.display = "none"; window.toastTimer = null; }, 1000); 
                         }
