@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v22.0 (User Pace Fix)</title>
+    <title>AI Director - Personal History Project v23.0 (Clean UI Fix)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
@@ -45,7 +45,7 @@
             pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent;
         }
 
-        /* スマホ専用タップ誘導エリア */
+        /* スマホ専用ステップ進行ボタン */
         #action-container {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             z-index: 160; width: 85%; display: none; pointer-events: auto;
@@ -98,6 +98,7 @@
         </div>
     </div>
 
+    <!-- スマホ専用ステップ進行ボタン -->
     <div id="action-container">
         <button id="action-btn">次へ進む</button>
     </div>
@@ -151,10 +152,10 @@
     let silenceTimer = null; 
 
     const steps = [
-        { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願い致します。", type: "voice_name" },
+        { msg: "こんにちは、AIディレクターです。まずはマイクに向かって自己紹介をお願い致します。", type: "voice_name" },
         { msg: "", type: "confirm" }, 
         { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 },
-        { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" },
+        { msg: "では、あなたの大切なものを中央に映してください。じっと見つめます。", type: "lock" },
         { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_deep" },
         { msg: "貴重な話をありがとうございます。追加で話しておきたいことはありますか？", type: "last_call" }
     ];
@@ -210,7 +211,7 @@
             }
 
             if (isActive) {
-                // PC用のコントロール：2秒間（2000ms）の沈黙で次のステップへ進む
+                // PC用の2秒沈黙タイマー
                 silenceTimer = setTimeout(() => {
                     if (currentStep === 1) {
                         if (isMobile && recognition) { try{ recognition.stop(); }catch(e){} }
@@ -287,10 +288,10 @@
                 const step = steps[currentStep-1];
 
                 if (step?.type === "pan_timer" || step?.type === "lock") {
-                    if (movementScore > 35) { 
+                    if (movementScore > 20) { 
                         if (window.toastTimer) { clearTimeout(window.toastTimer); window.toastTimer = null; }
                         toast.style.display = "block";
-                    } else if (movementScore < 20) { 
+                    } else if (movementScore < 10) { 
                         if (!window.toastTimer && toast.style.display === "block") {
                             window.toastTimer = setTimeout(() => { toast.style.display = "none"; window.toastTimer = null; }, 1000); 
                         }
@@ -305,7 +306,9 @@
                             staticCount = 0;
                             
                             if (isMobile) {
-                                setupMobileAction("deep_question", "AIディレクターの質問を聞く");
+                                // 💡 修正ポイント①：被るボタンを廃止し、自動で質問を表示して、最初から「話を終える」ボタンを設置！
+                                generateDeepQuestion();
+                                setupMobileAction("finish_talk", "話を終える（次へ進む）");
                             } else {
                                 setTimeout(next, 1000);
                             }
@@ -333,17 +336,8 @@
                 await startCamera("user");
                 loop(); 
                 next();
-            } else if (mode === "deep_question") {
-                generateDeepQuestion();
-                
-                // 💡 修正ポイント①：5秒の強制自動タイマーを廃止！
-                // 質問のテキストが読めるよう1.5秒だけ待ってから、ユーザーが自分のタイミングで押せる「話を終える」ボタンを表示します。
-                setTimeout(() => {
-                    setupMobileAction("finish_talk", "話を終える（次へ進む）");
-                }, 1500);
-
             } else if (mode === "finish_talk") {
-                // ユーザーが「話を終える」ボタンを押した瞬間に初めてダイアログに進みます
+                // 「話を終える」を押したら次の確認ダイアログへ
                 showEndDialog();
             }
         };
@@ -383,12 +377,8 @@
             next(); 
         } else {
             caption.innerText = "もっと聞かせてください。その奥には、どんな物語がありますか？";
-            
-            // 💡 修正ポイント②：追加で話す場合も、5秒の強制自動タイマーを廃止
-            // ユーザーが話し終えたら再度ボタンを押して進める形にします。
-            setTimeout(() => {
-                setupMobileAction("finish_talk", "話を終える（次へ進む）");
-            }, 1500);
+            // 💡 修正ポイント②：追加で話す場合も、最初からシンプルに「話を終える」ボタンを表示
+            setupMobileAction("finish_talk", "話を終える（次へ進む）");
         }
     }
 
