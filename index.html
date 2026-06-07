@@ -118,7 +118,7 @@
 
     <div id="ai-caption" class="ui"></div>
     <div id="ai-reaction" class="ui"></div>
-    <div id="warning-toast" class="ui">⚠️ もっとゆっくりカメラを動かしてください</div>
+    <div id="warning-toast" class="ui">⚠️ ゆっくりカメラを動かしてください</div>
     <div id="target-box"></div>
 </div>
 
@@ -155,7 +155,7 @@
         { msg: "こんにちは、AIディレクターです。まずはマイクに向かって自己紹介をお願い致します。", type: "voice_name" },
         { msg: "", type: "confirm" }, 
         { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 },
-        { msg: "では、あなたの大切なものを中央に映してください。じっと見つめます。", type: "lock" },
+        { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" },
         { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_deep" },
         { msg: "貴重な話をありがとうございます。追加で話しておきたいことはありますか？", type: "last_call" }
     ];
@@ -299,10 +299,10 @@
                 const step = steps[currentStep-1];
 
                 if (step?.type === "pan_timer" || step?.type === "lock") {
-                    if (movementScore > 25) { 
+                    if (movementScore > 30) { 
                         if (window.toastTimer) { clearTimeout(window.toastTimer); window.toastTimer = null; }
                         toast.style.display = "block";
-                    } else if (movementScore < 15) { 
+                    } else if (movementScore < 20) { 
                         if (!window.toastTimer && toast.style.display === "block") {
                             window.toastTimer = setTimeout(() => { toast.style.display = "none"; window.toastTimer = null; }, 1000); 
                         }
