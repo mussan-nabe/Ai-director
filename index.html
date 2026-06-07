@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v21.0 (Mobile Hardware Fix)</title>
+    <title>AI Director - Personal History Project v22.0 (User Pace Fix)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
@@ -94,7 +94,7 @@
         </div>
         <div class="btn-group">
             <button id="btn-run">撮影を開始する</button>
-            <button class="cancel" onclick="location.reload();">NaNキャンセル</button>
+            <button class="cancel" onclick="location.reload();">キャンセル</button>
         </div>
     </div>
 
@@ -118,7 +118,7 @@
 
     <div id="ai-caption" class="ui"></div>
     <div id="ai-reaction" class="ui"></div>
-    <div id="warning-toast" class="ui">⚠️ ゆっくりカメラを動かしてください</div>
+    <div id="warning-toast" class="ui">⚠️ もっとゆっくりカメラを動かしてください</div>
     <div id="target-box"></div>
 </div>
 
@@ -136,7 +136,6 @@
     const actionContainer = document.getElementById('action-container');
     const actionBtn = document.getElementById('action-btn');
 
-    // 💡 環境判定：スマホ（iOS/Android）かPCかを判定
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
     let localStream = null;
@@ -152,7 +151,7 @@
     let silenceTimer = null; 
 
     const steps = [
-        { msg: "こんにちは、AIディレクターです。まずはマイクに向かって自己紹介をお願い致します。", type: "voice_name" },
+        { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願い致します。", type: "voice_name" },
         { msg: "", type: "confirm" }, 
         { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 },
         { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" },
@@ -160,19 +159,16 @@
         { msg: "貴重な話をありがとうございます。追加で話しておきたいことはありますか？", type: "last_call" }
     ];
 
-    // スマホのハードウェア競合を完全に回避する超安定版カメラ起動システム
     async function startCamera(facingMode) {
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop()); 
             v.srcObject = null;
-            // 💡 修正ポイント①：スマホのカメラモジュールが完全にクローズするのを「800ms」しっかり待つ
             await new Promise(resolve => setTimeout(resolve, 800));
         }
         
         currentFacingMode = facingMode;
         v.style.transform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
 
-        // 💡 修正ポイント②：facingModeをexact(強制)指定でトライし、エラーを弾く
         const constraints = {
             video: { facingMode: { exact: facingMode }, width: { ideal: 640 }, height: { ideal: 480 } },
             audio: false 
@@ -181,7 +177,6 @@
         try {
             localStream = await navigator.mediaDevices.getUserMedia(constraints);
         } catch(e) {
-            // exactで弾かれた場合（PC等）のフォールバック
             constraints.video.facingMode = { ideal: facingMode };
             localStream = await navigator.mediaDevices.getUserMedia(constraints);
         }
@@ -190,7 +185,6 @@
         await v.play();
     }
 
-    // 音声認識の初期化
     function initSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) return;
@@ -215,11 +209,10 @@
                 showReaction("なるほど...");
             }
 
-            // 2秒間沈黙したら自動で確定ステップへ移動
             if (isActive) {
+                // PC用のコントロール：2秒間（2000ms）の沈黙で次のステップへ進む
                 silenceTimer = setTimeout(() => {
                     if (currentStep === 1) {
-                        // スマホの場合、自己紹介が終わったこの瞬間に音声認識を完全終了し、カメラを起動
                         if (isMobile && recognition) { try{ recognition.stop(); }catch(e){} }
                         next();
                     } else {
@@ -230,7 +223,6 @@
         };
 
         recognition.onend = () => {
-            // 💡 修正ポイント③：スマホかつ自己紹介フェーズ（ステップ1）以外ではループさせない（衝突回避）
             if (isActive && !isMobile && currentStep <= 1) {
                 try { recognition.start(); } catch(e){}
             }
@@ -251,21 +243,17 @@
         setTimeout(() => { reaction.style.opacity = 0; }, 2000);
     }
 
-    // 【スタートボタン】タップ時
     document.getElementById('btn-run').onclick = async () => {
         initSpeechRecognition();
         document.getElementById('start-screen').style.display = 'none';
         isActive = true;
 
         if (isMobile) {
-            // 💡 修正ポイント④【スマホ専用設計】
-            // カメラはまだ起動せず、画面を真っ黒にしたまま音声認識マイクだけを安全に単独起動！
             caption.innerText = steps[0].msg;
             caption.style.opacity = 1;
             currentStep = 1;
             if (recognition) recognition.start();
         } else {
-            // PCの場合は従来通り最初からカメラとマイクを同時起動
             try {
                 await startCamera("user"); 
                 if (recognition) recognition.start();
@@ -302,7 +290,7 @@
                     if (movementScore > 35) { 
                         if (window.toastTimer) { clearTimeout(window.toastTimer); window.toastTimer = null; }
                         toast.style.display = "block";
-                    } else if (movementScore < 25) { 
+                    } else if (movementScore < 20) { 
                         if (!window.toastTimer && toast.style.display === "block") {
                             window.toastTimer = setTimeout(() => { toast.style.display = "none"; window.toastTimer = null; }, 1000); 
                         }
@@ -317,7 +305,6 @@
                             staticCount = 0;
                             
                             if (isMobile) {
-                                // 💡 スマホの衝突を防ぐため、ロック完了後はタップでディレクターの質問を起動
                                 setupMobileAction("deep_question", "AIディレクターの質問を聞く");
                             } else {
                                 setTimeout(next, 1000);
@@ -335,7 +322,7 @@
         requestAnimationFrame(loop);
     }
 
-    // 💡 修正ポイント⑤：スマホ用の中断・タップ誘導システム
+    // スマホ用のアクション制御システム
     function setupMobileAction(mode, btnText) {
         actionBtn.innerText = btnText;
         actionContainer.style.display = "block";
@@ -343,14 +330,21 @@
         actionBtn.onclick = async () => {
             actionContainer.style.display = "none";
             if (mode === "start_camera_after_voice") {
-                // 自己紹介の音声認識が100%終わった安全な状態で、ここから初めてカメラが立ち上がります
                 await startCamera("user");
                 loop(); 
                 next();
             } else if (mode === "deep_question") {
                 generateDeepQuestion();
-                // スマホの場合、後半の長文音声認識はOS制限で動かないため、3秒後に自動で終了ダイアログへ誘導
-                setTimeout(showEndDialog, 5000);
+                
+                // 💡 修正ポイント①：5秒の強制自動タイマーを廃止！
+                // 質問のテキストが読めるよう1.5秒だけ待ってから、ユーザーが自分のタイミングで押せる「話を終える」ボタンを表示します。
+                setTimeout(() => {
+                    setupMobileAction("finish_talk", "話を終える（次へ進む）");
+                }, 1500);
+
+            } else if (mode === "finish_talk") {
+                // ユーザーが「話を終える」ボタンを押した瞬間に初めてダイアログに進みます
+                showEndDialog();
             }
         };
     }
@@ -389,7 +383,12 @@
             next(); 
         } else {
             caption.innerText = "もっと聞かせてください。その奥には、どんな物語がありますか？";
-            setTimeout(showEndDialog, 5000); // スマホ用自動進行
+            
+            // 💡 修正ポイント②：追加で話す場合も、5秒の強制自動タイマーを廃止
+            // ユーザーが話し終えたら再度ボタンを押して進める形にします。
+            setTimeout(() => {
+                setupMobileAction("finish_talk", "話を終える（次へ進む）");
+            }, 1500);
         }
     }
 
@@ -405,7 +404,6 @@
             currentStep++;
 
             if (isMobile) {
-                // 音声認識で取得した名前を確認するため、ここでインカメラ撮影をユーザーのタップで起動
                 setupMobileAction("start_camera_after_voice", "はい、カメラを起動して次へ進む");
             }
             return;
@@ -415,7 +413,6 @@
             caption.innerText = s.msg;
             caption.style.opacity = 1;
             currentStep++;
-            // 部屋の撮影。800ms空けて安全にアウトカメラ(environment)にスイッチ
             await startCamera("environment");
             setTimeout(next, s.t);
             return;
