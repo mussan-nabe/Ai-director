@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v24.0 (Bottom UI Fix)</title>
+    <title>AI Director - Personal History Project v25.0 (Perfect Timeline Fix)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
@@ -45,7 +45,7 @@
             pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent;
         }
 
-        /* 💡 修正ポイント①：スマホ専用進行ボタンを画面の「一番下（bottom: 5%）」に配置 */
+        /* スマホ専用ステップ進行ボタン */
         #action-container {
             position: absolute; 
             bottom: 5%; 
@@ -152,17 +152,17 @@
     let recognition = null;
     let capturedText = "";
     let detectedName = ""; 
-    let isDeepMode = false; 
     let currentFacingMode = "user"; 
     let silenceTimer = null; 
 
+    // 💡 修正ポイント①：全体のタイムラインのテロップ構造を指示通りに再定義
     const steps = [
         { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願い致します。", type: "voice_name" },
         { msg: "", type: "confirm" }, 
         { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 },
-        { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" },
-        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_deep" },
-        { msg: "貴重な話をありがとうございます。追加で話しておきたいことはありますか？", type: "last_call" }
+        { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" }, // ①
+        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial" }, // ②
+        { msg: "", type: "voice_deep" } // ③（JavaScript側で動的に書き換え）
     ];
 
     async function startCamera(facingMode) {
@@ -216,6 +216,7 @@
             }
 
             if (isActive) {
+                // PC用の沈黙タイマー
                 silenceTimer = setTimeout(() => {
                     if (currentStep === 1) {
                         if (isMobile && recognition) { try{ recognition.stop(); }catch(e){} }
@@ -235,10 +236,12 @@
     }
 
     function handleSilenceEnd() {
-        if (isDeepMode) {
-            showEndDialog();
-        } else {
+        const stepInside = steps[currentStep-1];
+        if (stepInside?.type === "voice_initial") {
             generateDeepQuestion();
+            steps[currentStep-1].type = "voice_deep"; 
+        } else if (stepInside?.type === "voice_deep") {
+            showEndDialog();
         }
     }
 
@@ -273,7 +276,6 @@
         await startCamera(targetMode);
     }
 
-    // 映像解析ループ
     function loop() {
         if (!isActive) { requestAnimationFrame(loop); return; }
 
@@ -311,8 +313,10 @@
                             staticCount = 0;
                             
                             if (isMobile) {
-                                generateDeepQuestion();
-                                setupMobileAction("finish_talk", "話を終える（次へ進む）");
+                                // 💡 修正ポイント②：①のロック完了の直後は、確実に②の初期質問を表示する
+                                caption.innerText = "これですね。これは何ですか。なぜ大切なのか、教えてください。";
+                                currentStep = 5; // ステップ位置をvoice_initial(5番目)に進める
+                                setupMobileAction("to_deep_question", "話を終える（次へ進む）");
                             } else {
                                 setTimeout(next, 1000);
                             }
@@ -329,7 +333,7 @@
         requestAnimationFrame(loop);
     }
 
-    // スマホ用アクション制御
+    // スマホ用のアクション制御システム
     function setupMobileAction(mode, btnText) {
         actionBtn.innerText = btnText;
         actionContainer.style.display = "block";
@@ -340,7 +344,12 @@
                 await startCamera("user");
                 loop(); 
                 next();
-            } else if (mode === "finish_talk") {
+            } else if (mode === "to_deep_question") {
+                // 💡 修正ポイント③：②（初期質問）への回答が終わったら、③（追加の深掘り質問）を表示する
+                generateDeepQuestion();
+                setupMobileAction("to_end_dialog", "話を終える（次へ進む）");
+            } else if (mode === "to_end_dialog") {
+                // 💡 修正ポイント④：③（追加の質問）への回答が終わったら、④（撮影を終了しますか？）へ進む
                 showEndDialog();
             }
         };
@@ -363,28 +372,29 @@
         }
         caption.innerText = deepMsg;
         capturedText = ""; 
-        isDeepMode = true; 
         toggleBtn.style.display = "block";
     }
 
     function showEndDialog() {
-        caption.innerText = "お話、ありがとうございます。撮影を終えますか？";
+        // 💡 修正ポイント⑤：指示通り「撮影を終了しますか？」の文言に統一
+        caption.innerText = "撮影を終了しますか？"; 
         dialogLayer.style.display = "flex"; 
     }
 
     function selectChoice(action) {
         dialogLayer.style.display = "none"; 
         if (action === 'end') {
-            isDeepMode = false;
             toggleBtn.style.display = "none"; 
-            next(); 
+            // 撮影終了の最終ボタンレイヤーを表示し、最下の進行ボタンは非表示
+            finishLayer.style.display = "flex";
+            actionContainer.style.display = "none"; 
+            caption.innerText = "ご利用ありがとうございました。";
         } else {
             caption.innerText = "もっと聞かせてください。その奥には、どんな物語がありますか？";
-            setupMobileAction("finish_talk", "話を終える（次へ進む）");
+            setupMobileAction("to_end_dialog", "話を終える（次へ進む）");
         }
     }
 
-    // ステップ進行管理
     async function next() {
         if (currentStep >= steps.length) return;
         const s = steps[currentStep];
@@ -414,12 +424,6 @@
         caption.innerText = s.msg;
         caption.style.opacity = 1;
         currentStep++;
-        
-        // 💡 修正ポイント②：「撮影を終了する」ボタンが出るタイミングで「話を終える」ボタンを確実に非表示にする
-        if (s.type === "last_call") {
-            finishLayer.style.display = "flex";
-            actionContainer.style.display = "none"; 
-        }
     }
 </script>
 </body>
