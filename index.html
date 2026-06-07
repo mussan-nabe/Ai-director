@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v20.0 (Ultimate Mobile Fix)</title>
+    <title>AI Director - Personal History Project v21.0 (Mobile Hardware Fix)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
@@ -37,7 +37,7 @@
             display: none; box-shadow: 0 0 30px #f00; z-index: 5;
         }
 
-        /* ユーザー手動カメラ切り替えボタン */
+        /* カメラ切り替えボタン */
         #camera-toggle-btn {
             position: absolute; top: 15px; left: 15px; background: rgba(0, 0, 0, 0.8);
             color: #fff; border: 2px solid #fff; padding: 12px 20px; font-size: 1rem;
@@ -45,7 +45,7 @@
             pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent;
         }
 
-        /* スマホ用割り込みアクションボタン */
+        /* スマホ専用タップ誘導エリア */
         #action-container {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             z-index: 160; width: 85%; display: none; pointer-events: auto;
@@ -53,10 +53,10 @@
         #action-btn {
             background: #007fff; color: #fff; padding: 20px; font-size: 1.3rem;
             font-weight: bold; border: 3px solid #fff; border-radius: 15px;
-            box-shadow: 0 0 25px rgba(0,127,255,0.8);
+            box-shadow: 0 0 25px rgba(0,127,255,0.8); width: 100%;
         }
 
-        /* 番組ロゴ背景スタート画面 */
+        /* スタート画面 */
         #start-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: #fff url('https://images.tango-frames.com/api/v1/images/f43f83.png') no-repeat center center;
@@ -94,7 +94,7 @@
         </div>
         <div class="btn-group">
             <button id="btn-run">撮影を開始する</button>
-            <button class="cancel" onclick="location.reload();">キャンセル</button>
+            <button class="cancel" onclick="location.reload();">NaNキャンセル</button>
         </div>
     </div>
 
@@ -136,6 +136,9 @@
     const actionContainer = document.getElementById('action-container');
     const actionBtn = document.getElementById('action-btn');
 
+    // 💡 環境判定：スマホ（iOS/Android）かPCかを判定
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
     let localStream = null;
     let currentStep = 0;
     let lastImgData = null;
@@ -147,10 +150,9 @@
     let isDeepMode = false; 
     let currentFacingMode = "user"; 
     let silenceTimer = null; 
-    let recognitionTriggerMode = "none";
 
     const steps = [
-        { msg: "こんにちは、AIディレクターです。まずは、カメラに向かって自己紹介をお願い致します。", type: "voice_name" },
+        { msg: "こんにちは、AIディレクターです。まずはマイクに向かって自己紹介をお願い致します。", type: "voice_name" },
         { msg: "", type: "confirm" }, 
         { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 },
         { msg: "では、あなたの大切なものを中央に映してください。じっと見つめます。", type: "lock" },
@@ -158,28 +160,37 @@
         { msg: "貴重な話をありがとうございます。追加で話しておきたいことはありますか？", type: "last_call" }
     ];
 
-    // スマホブラウザで確実に動く超安定型カメラ起動システム
+    // スマホのハードウェア競合を完全に回避する超安定版カメラ起動システム
     async function startCamera(facingMode) {
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop()); 
             v.srcObject = null;
+            // 💡 修正ポイント①：スマホのカメラモジュールが完全にクローズするのを「800ms」しっかり待つ
+            await new Promise(resolve => setTimeout(resolve, 800));
         }
         
         currentFacingMode = facingMode;
         v.style.transform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
 
+        // 💡 修正ポイント②：facingModeをexact(強制)指定でトライし、エラーを弾く
         const constraints = {
-            // 💡 修正ポイント①：audioをfalseにし音声認識システムとのハードウェア衝突を完全回避
-            video: { facingMode: { ideal: facingMode }, width: { ideal: 640 }, height: { ideal: 480 } },
+            video: { facingMode: { exact: facingMode }, width: { ideal: 640 }, height: { ideal: 480 } },
             audio: false 
         };
 
-        localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch(e) {
+            // exactで弾かれた場合（PC等）のフォールバック
+            constraints.video.facingMode = { ideal: facingMode };
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+        }
+
         v.srcObject = localStream;
         await v.play();
     }
 
-    // 音声認識の初期設定
+    // 音声認識の初期化
     function initSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) return;
@@ -204,34 +215,33 @@
                 showReaction("なるほど...");
             }
 
-            const stepInside = steps[currentStep-1];
-            if (isActive && (stepInside?.type === "voice_name" || stepInside?.type === "confirm" || stepInside?.type === "voice_deep" || stepInside?.type === "voice_more")) {
+            // 2秒間沈黙したら自動で確定ステップへ移動
+            if (isActive) {
                 silenceTimer = setTimeout(() => {
-                    handleSilenceEnd(stepInside);
+                    if (currentStep === 1) {
+                        // スマホの場合、自己紹介が終わったこの瞬間に音声認識を完全終了し、カメラを起動
+                        if (isMobile && recognition) { try{ recognition.stop(); }catch(e){} }
+                        next();
+                    } else {
+                        handleSilenceEnd();
+                    }
                 }, 2000); 
             }
         };
 
-        // 💡 修正ポイント②：スマホでの安全管理（必要なモードの時だけ明示的に再開）
         recognition.onend = () => {
-            if (isActive && (recognitionTriggerMode === "name" || recognitionTriggerMode === "deep")) {
+            // 💡 修正ポイント③：スマホかつ自己紹介フェーズ（ステップ1）以外ではループさせない（衝突回避）
+            if (isActive && !isMobile && currentStep <= 1) {
                 try { recognition.start(); } catch(e){}
             }
         };
     }
 
-    function handleSilenceEnd(stepInside) {
-        if (stepInside.type === "voice_deep" && !isDeepMode) {
+    function handleSilenceEnd() {
+        if (isDeepMode) {
+            showEndDialog();
+        } else {
             generateDeepQuestion();
-        } 
-        else if (stepInside.type === "voice_deep" && isDeepMode) {
-            showEndDialog();
-        } 
-        else if (stepInside.type === "voice_more") {
-            showEndDialog();
-        } 
-        else {
-            next();
         }
     }
 
@@ -241,28 +251,33 @@
         setTimeout(() => { reaction.style.opacity = 0; }, 2000);
     }
 
-    // 【スタート】撮影を開始するボタン
+    // 【スタートボタン】タップ時
     document.getElementById('btn-run').onclick = async () => {
         initSpeechRecognition();
-        recognitionTriggerMode = "name";
-        try {
-            // 💡 修正ポイント③：タップのイベントハンドラ内でラグなしでカメラとマイクを同時起動
-            if (recognition) recognition.start();
-            await startCamera("user"); 
-            document.getElementById('start-screen').style.display = 'none';
-            isActive = true;
+        document.getElementById('start-screen').style.display = 'none';
+        isActive = true;
 
-            next();
-            loop();
-        } catch (e) { 
-            console.error(e);
-            alert("スマホのカメラ起動に失敗しました。権限を確認してください。"); 
+        if (isMobile) {
+            // 💡 修正ポイント④【スマホ専用設計】
+            // カメラはまだ起動せず、画面を真っ黒にしたまま音声認識マイクだけを安全に単独起動！
+            caption.innerText = steps[0].msg;
+            caption.style.opacity = 1;
+            currentStep = 1;
+            if (recognition) recognition.start();
+        } else {
+            // PCの場合は従来通り最初からカメラとマイクを同時起動
+            try {
+                await startCamera("user"); 
+                if (recognition) recognition.start();
+                next();
+                loop();
+            } catch (e) { alert("カメラ起動に失敗しました。"); }
         }
     };
 
     async function toggleCameraHandy() {
         const targetMode = currentFacingMode === "user" ? "environment" : "user";
-        try { await startCamera(targetMode); } catch(e){}
+        await startCamera(targetMode);
     }
 
     function loop() {
@@ -300,8 +315,13 @@
                         if (staticCount > 90) { 
                             target.style.display = "block";
                             staticCount = 0;
-                            // 💡 修正ポイント④：ロック完了後、自動で次の会話に行かずスマホ用ボタンを表示
-                            setupMobileInterruption("answer_start", "AIディレクターの質問に答える");
+                            
+                            if (isMobile) {
+                                // 💡 スマホの衝突を防ぐため、ロック完了後はタップでディレクターの質問を起動
+                                setupMobileAction("deep_question", "AIディレクターの質問を聞く");
+                            } else {
+                                setTimeout(next, 1000);
+                            }
                         }
                     } else {
                         staticCount = 0; 
@@ -315,28 +335,22 @@
         requestAnimationFrame(loop);
     }
 
-    // 💡 修正ポイント⑤：スマホのセキュリティ制限を回避するための中断・タップ誘導システム
-    function setupMobileInterruption(mode, btnText) {
-        if (recognition) {
-            recognitionTriggerMode = "none";
-            try { recognition.stop(); } catch(e){}
-        }
+    // 💡 修正ポイント⑤：スマホ用の中断・タップ誘導システム
+    function setupMobileAction(mode, btnText) {
         actionBtn.innerText = btnText;
         actionContainer.style.display = "block";
         
         actionBtn.onclick = async () => {
             actionContainer.style.display = "none";
-            if (mode === "change_camera") {
-                // ユーザーのタップ直後なので、インからアウトカメラへの切り替えがスマホでも100%成功します
-                await startCamera("environment");
+            if (mode === "start_camera_after_voice") {
+                // 自己紹介の音声認識が100%終わった安全な状態で、ここから初めてカメラが立ち上がります
+                await startCamera("user");
+                loop(); 
                 next();
-            } else if (mode === "answer_start") {
-                // ユーザーのタップ直後なので、停止していた音声認識マイクの再起動が100%成功します
-                recognitionTriggerMode = "deep";
-                if (recognition) {
-                    try { recognition.start(); } catch(e){}
-                }
+            } else if (mode === "deep_question") {
                 generateDeepQuestion();
+                // スマホの場合、後半の長文音声認識はOS制限で動かないため、3秒後に自動で終了ダイアログへ誘導
+                setTimeout(showEndDialog, 5000);
             }
         };
     }
@@ -372,14 +386,10 @@
         if (action === 'end') {
             isDeepMode = false;
             toggleBtn.style.display = "none"; 
-            if (recognition) {
-                recognitionTriggerMode = "none";
-                try { recognition.stop(); } catch(e){}
-            }
             next(); 
         } else {
             caption.innerText = "もっと聞かせてください。その奥には、どんな物語がありますか？";
-            steps[currentStep-1].type = "voice_more"; 
+            setTimeout(showEndDialog, 5000); // スマホ用自動進行
         }
     }
 
@@ -393,8 +403,11 @@
             caption.innerText = s.msg;
             caption.style.opacity = 1;
             currentStep++;
-            // 💡 修正ポイント⑥：次の「部屋の撮影」に進む前に、アウトカメラ切り替え用のボタンを出現させる
-            setupMobileInterruption("change_camera", "はい（アウトカメラに切り替えて部屋を撮影）");
+
+            if (isMobile) {
+                // 音声認識で取得した名前を確認するため、ここでインカメラ撮影をユーザーのタップで起動
+                setupMobileAction("start_camera_after_voice", "はい、カメラを起動して次へ進む");
+            }
             return;
         }
 
@@ -402,6 +415,8 @@
             caption.innerText = s.msg;
             caption.style.opacity = 1;
             currentStep++;
+            // 部屋の撮影。800ms空けて安全にアウトカメラ(environment)にスイッチ
+            await startCamera("environment");
             setTimeout(next, s.t);
             return;
         }
