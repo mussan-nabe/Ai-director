@@ -3,16 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v26.0 (Dilemma Solved Version)</title>
+    <title>AI Director - Personal History Project v25.0 (Perfect Timeline Fix)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
         
-        /* 💡 修正ポイント①：videoとcanvasを同じサイズで重ね、通信切り替えに対応 */
-        video, canvas { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
-        canvas { display: none; z-index: 2; }
-        video { z-index: 1; }
-
+        video { width: 100%; height: 100%; object-fit: cover; }
+        canvas { display: none; }
         .ui { position: absolute; z-index: 10; width: 100%; text-align: center; pointer-events: none; left: 0; }
         
         #ai-caption {
@@ -158,13 +155,14 @@
     let currentFacingMode = "user"; 
     let silenceTimer = null; 
 
+    // 💡 修正ポイント①：全体のタイムラインのテロップ構造を指示通りに再定義
     const steps = [
-        { msg: "こんにちは、AIディレクターです。まずはマイクに向かって氏名をお願い致します。", type: "voice_name" },
+        { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願いします。", type: "voice_name" },
         { msg: "", type: "confirm" }, 
         { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 },
-        { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" }, 
-        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial" }, 
-        { msg: "", type: "voice_deep" } 
+        { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" }, // ①
+        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial" }, // ②
+        { msg: "", type: "voice_deep" } // ③（JavaScript側で動的に書き換え）
     ];
 
     async function startCamera(facingMode) {
@@ -218,6 +216,7 @@
             }
 
             if (isActive) {
+                // PC用の沈黙タイマー
                 silenceTimer = setTimeout(() => {
                     if (currentStep === 1) {
                         if (isMobile && recognition) { try{ recognition.stop(); }catch(e){} }
@@ -280,13 +279,9 @@
     function loop() {
         if (!isActive) { requestAnimationFrame(loop); return; }
 
-        // 通常ループ時は160x120の軽量解析サイズ
-        if (v.srcObject) {
-            c.width = 160; c.height = 120;
-            try { ctx.drawImage(v, 0, 0, c.width, c.height); } catch(e){}
-        }
-        
+        c.width = 160; c.height = 120;
         try {
+            ctx.drawImage(v, 0, 0, c.width, c.height);
             const currentImgData = ctx.getImageData(0, 0, c.width, c.height);
 
             if (lastImgData) {
@@ -318,27 +313,9 @@
                             staticCount = 0;
                             
                             if (isMobile) {
-                                // 💡 修正ポイント②：【マイクの奪還システム】
-                                // 1. ロックした瞬間の高画質映像をキャンバスに写して画面を「写真」として固定
-                                c.width = v.videoWidth || 640;
-                                c.height = v.videoHeight || 480;
-                                ctx.drawImage(v, 0, 0, c.width, c.height);
-                                c.style.display = "block"; 
-                                
-                                // 2. カメラストリームを完全停止（これでスマホのマイク排他制限が解除される）
-                                if (localStream) {
-                                    localStream.getTracks().forEach(track => track.stop());
-                                    v.srcObject = null;
-                                }
-                                
-                                // 3. 音声認識（マイク）を即時スタート（カメラが死んだので100%正確に聞き取れます）
-                                if (recognition) {
-                                    capturedText = ""; 
-                                    try { recognition.start(); } catch(e){}
-                                }
-
+                                // 💡 修正ポイント②：①のロック完了の直後は、確実に②の初期質問を表示する
                                 caption.innerText = "これですね。これは何ですか。なぜ大切なのか、教えてください。";
-                                currentStep = 5; 
+                                currentStep = 5; // ステップ位置をvoice_initial(5番目)に進める
                                 setupMobileAction("to_deep_question", "話を終える（次へ進む）");
                             } else {
                                 setTimeout(next, 1000);
@@ -368,18 +345,11 @@
                 loop(); 
                 next();
             } else if (mode === "to_deep_question") {
-                // 💡 修正ポイント③：ユーザーが話し終えたら、一度マイクを止めて文章（キーワード）を確定させる
-                if (recognition) { try{ recognition.stop(); }catch(e){} }
-                
-                // 確定したユーザーの言葉（capturedText）から「親」「宝物」などの深掘り質問を生成
+                // 💡 修正ポイント③：②（初期質問）への回答が終わったら、③（追加の深掘り質問）を表示する
                 generateDeepQuestion();
-                
-                // 次の質問フェーズに進むタイミングで、写真（キャンバス）を消して再びアウトカメラを起動！
-                c.style.display = "none";
-                await startCamera("environment");
-                
                 setupMobileAction("to_end_dialog", "話を終える（次へ進む）");
             } else if (mode === "to_end_dialog") {
+                // 💡 修正ポイント④：③（追加の質問）への回答が終わったら、④（撮影を終了しますか？）へ進む
                 showEndDialog();
             }
         };
@@ -387,14 +357,13 @@
 
     function generateDeepQuestion() {
         let deepMsg = "";
-        // 💡 修正ポイント④：カメラが止まっていたフェーズなので、スマホでも以下の条件分岐が100%機能します！
         if (capturedText.match(/(裏切り|挫折|後悔|大変|苦労)/)) {
             deepMsg = "その出来事は、あなたの人生にどんな傷や、逆にどんな強さを残しましたか？";
         } else if (capturedText.match(/(ほしかった|忘れられない|思い出|宝物)/)) {
             deepMsg = "今、それが手に入ったら、当時の自分に何と言ってあげたいですか？";
         } else if (capturedText.match(/(恋|別れ|約束)/)) {
             deepMsg = "そのお相手は、今のあなたの暮らしや頑張りを、どこかで見守ってくれている気がしますか？";
-        } else if (capturedText.match(/(家族|父|母|子供|親)/)) {
+        } else if (capturedText.match(/(家族|父|母|子供)/)) {
             deepMsg = "そのこと、ご家族の方は何と仰っているんですか？";
         } else if (capturedText.match(/(仕事|会社|旅立ち|地元|故郷)/)) {
             deepMsg = "そこから離れて今に至るまでに、一番の心の支えになったものは何ですか？";
@@ -407,6 +376,7 @@
     }
 
     function showEndDialog() {
+        // 💡 修正ポイント⑤：指示通り「撮影を終了しますか？」の文言に統一
         caption.innerText = "撮影を終了しますか？"; 
         dialogLayer.style.display = "flex"; 
     }
@@ -415,6 +385,7 @@
         dialogLayer.style.display = "none"; 
         if (action === 'end') {
             toggleBtn.style.display = "none"; 
+            // 撮影終了の最終ボタンレイヤーを表示し、最下の進行ボタンは非表示
             finishLayer.style.display = "flex";
             actionContainer.style.display = "none"; 
             caption.innerText = "ご利用ありがとうございました。";
