@@ -3,13 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v25.0 (Perfect Timeline Fix)</title>
+    <title>AI Director - Personal History Project v26.0 (Double Object Fix)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
         
-        video { width: 100%; height: 100%; object-fit: cover; }
-        canvas { display: none; }
+        video, canvas { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
+        canvas { display: none; z-index: 2; }
+        video { z-index: 1; }
+
         .ui { position: absolute; z-index: 10; width: 100%; text-align: center; pointer-events: none; left: 0; }
         
         #ai-caption {
@@ -104,6 +106,7 @@
         </div>
     </div>
 
+    <!-- スマホ専用ステップ進行ボタン -->
     <div id="action-container">
         <button id="action-btn">次へ進む</button>
     </div>
@@ -155,14 +158,19 @@
     let currentFacingMode = "user"; 
     let silenceTimer = null; 
 
-    // 💡 修正ポイント①：全体のタイムラインのテロップ構造を指示通りに再定義
+    // 💡 修正ポイント①：2つ目のモノのサイクル（催促・ロック・初期問・深掘り）をタイムラインへ完全追加
     const steps = [
-        { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願いします。", type: "voice_name" },
-        { msg: "", type: "confirm" }, 
-        { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 },
-        { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" }, // ①
-        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial" }, // ②
-        { msg: "", type: "voice_deep" } // ③（JavaScript側で動的に書き換え）
+        { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願い致します。", type: "voice_name" }, // 1
+        { msg: "", type: "confirm" }, // 2
+        { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 }, // 3
+        // --- 1つ目のモノの撮影サイクル ---
+        { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" }, // 4
+        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial" }, // 5
+        { msg: "", type: "voice_deep" }, // 6
+        // --- 2つ目のモノの撮影サイクル（新規追加） ---
+        { msg: "では、あなたが見てほしいもう一つのものを見せてください", type: "lock2" }, // 7
+        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial2" }, // 8
+        { msg: "", type: "voice_deep2" } // 9
     ];
 
     async function startCamera(facingMode) {
@@ -235,13 +243,20 @@
         };
     }
 
+    // PC用の会話終了判定
     function handleSilenceEnd() {
         const stepInside = steps[currentStep-1];
-        if (stepInside?.type === "voice_initial") {
+        if (stepInside?.type === "voice_initial" || stepInside?.type === "voice_initial2") {
             generateDeepQuestion();
-            steps[currentStep-1].type = "voice_deep"; 
+            if (stepInside.type === "voice_initial") {
+                steps[currentStep-1].type = "voice_deep";
+            } else {
+                steps[currentStep-1].type = "voice_deep2";
+            }
         } else if (stepInside?.type === "voice_deep") {
-            showEndDialog();
+            next(); // 1つ目の深掘りが終わったら、2つ目のオブジェクト指示(lock2)へ進む
+        } else if (stepInside?.type === "voice_deep2") {
+            showEndDialog(); // 2つ目の深掘りが終わったら終了
         }
     }
 
@@ -276,12 +291,16 @@
         await startCamera(targetMode);
     }
 
+    // 映像解析・進行ループ
     function loop() {
         if (!isActive) { requestAnimationFrame(loop); return; }
 
-        c.width = 160; c.height = 120;
+        if (v.srcObject) {
+            c.width = 160; c.height = 120;
+            try { ctx.drawImage(v, 0, 0, c.width, c.height); } catch(e){}
+        }
+        
         try {
-            ctx.drawImage(v, 0, 0, c.width, c.height);
             const currentImgData = ctx.getImageData(0, 0, c.width, c.height);
 
             if (lastImgData) {
@@ -294,7 +313,7 @@
                 const movementScore = diff / (c.width * c.height);
                 const step = steps[currentStep-1];
 
-                if (step?.type === "pan_timer" || step?.type === "lock") {
+                if (step?.type === "pan_timer" || step?.type === "lock" || step?.type === "lock2") {
                     if (movementScore > 35) { 
                         if (window.toastTimer) { clearTimeout(window.toastTimer); window.toastTimer = null; }
                         toast.style.display = "block";
@@ -305,18 +324,40 @@
                     }
                 }
 
-                if (step?.type === "lock") {
+                // 💡 修正ポイント②：1つ目(lock)と2つ目(lock2)のどちらの静止判定（ロックオン）でも動くよう拡張
+                if (step?.type === "lock" || step?.type === "lock2") {
                     if (movementScore < 6) { 
                         staticCount++;
                         if (staticCount > 90) { 
-                            target.style.display = "block";
                             staticCount = 0;
+                            target.style.display = "none"; // ターゲット枠を消す
                             
                             if (isMobile) {
-                                // 💡 修正ポイント②：①のロック完了の直後は、確実に②の初期質問を表示する
+                                // 静止画をキャプチャしてマイクを奪還
+                                c.width = v.videoWidth || 640;
+                                c.height = v.videoHeight || 480;
+                                ctx.drawImage(v, 0, 0, c.width, c.height);
+                                c.style.display = "block"; 
+                                
+                                if (localStream) {
+                                    localStream.getTracks().forEach(track => track.stop());
+                                    v.srcObject = null;
+                                }
+                                
+                                if (recognition) {
+                                    capturedText = ""; 
+                                    try { recognition.start(); } catch(e){}
+                                }
+
                                 caption.innerText = "これですね。これは何ですか。なぜ大切なのか、教えてください。";
-                                currentStep = 5; // ステップ位置をvoice_initial(5番目)に進める
-                                setupMobileAction("to_deep_question", "話を終える（次へ進む）");
+                                
+                                if (step.type === "lock") {
+                                    currentStep = 5; // voice_initial
+                                    setupMobileAction("to_deep_question", "話を終える（次へ進む）");
+                                } else {
+                                    currentStep = 8; // voice_initial2 (2つ目の初期質問へ)
+                                    setupMobileAction("to_deep_question2", "話を終える（次へ進む）");
+                                }
                             } else {
                                 setTimeout(next, 1000);
                             }
@@ -335,21 +376,44 @@
 
     // スマホ用のアクション制御システム
     function setupMobileAction(mode, btnText) {
+        if (mode === "none") {
+            actionContainer.style.display = "none";
+            return;
+        }
         actionBtn.innerText = btnText;
         actionContainer.style.display = "block";
         
         actionBtn.onclick = async () => {
             actionContainer.style.display = "none";
+            
             if (mode === "start_camera_after_voice") {
                 await startCamera("user");
                 loop(); 
                 next();
-            } else if (mode === "to_deep_question") {
-                // 💡 修正ポイント③：②（初期質問）への回答が終わったら、③（追加の深掘り質問）を表示する
+            } 
+            else if (mode === "to_deep_question") {
+                // 1つ目のモノ：初期質問終了 -> 深掘りへ
+                if (recognition) { try{ recognition.stop(); }catch(e){} }
                 generateDeepQuestion();
+                c.style.display = "none";
+                await startCamera("environment");
+                setupMobileAction("to_second_object_prompt", "話を終える（次へ進む）");
+            } 
+            // 💡 修正ポイント③：1つ目の深掘りが終わったら、2つ目のモノの催促指示を掲出
+            else if (mode === "to_second_object_prompt") {
+                caption.innerText = "では、あなたが見てほしいもう一つのものを見せてください";
+                currentStep = 7; // lock2のインデックス+1
+                setupMobileAction("none", ""); // 自動ロックオンを待つためボタンは一時非表示
+            } 
+            // 💡 修正ポイント④：2つ目のモノの初期質問終了 -> 2つ目の深掘りへ
+            else if (mode === "to_deep_question2") {
+                if (recognition) { try{ recognition.stop(); }catch(e){} }
+                generateDeepQuestion();
+                c.style.display = "none";
+                await startCamera("environment");
                 setupMobileAction("to_end_dialog", "話を終える（次へ進む）");
-            } else if (mode === "to_end_dialog") {
-                // 💡 修正ポイント④：③（追加の質問）への回答が終わったら、④（撮影を終了しますか？）へ進む
+            } 
+            else if (mode === "to_end_dialog") {
                 showEndDialog();
             }
         };
@@ -363,7 +427,7 @@
             deepMsg = "今、それが手に入ったら、当時の自分に何と言ってあげたいですか？";
         } else if (capturedText.match(/(恋|別れ|約束)/)) {
             deepMsg = "そのお相手は、今のあなたの暮らしや頑張りを、どこかで見守ってくれている気がしますか？";
-        } else if (capturedText.match(/(家族|父|母|子供)/)) {
+        } else if (capturedText.match(/(家族|父|母|子供|親)/)) {
             deepMsg = "そのこと、ご家族の方は何と仰っているんですか？";
         } else if (capturedText.match(/(仕事|会社|旅立ち|地元|故郷)/)) {
             deepMsg = "そこから離れて今に至るまでに、一番の心の支えになったものは何ですか？";
@@ -376,7 +440,6 @@
     }
 
     function showEndDialog() {
-        // 💡 修正ポイント⑤：指示通り「撮影を終了しますか？」の文言に統一
         caption.innerText = "撮影を終了しますか？"; 
         dialogLayer.style.display = "flex"; 
     }
@@ -385,7 +448,6 @@
         dialogLayer.style.display = "none"; 
         if (action === 'end') {
             toggleBtn.style.display = "none"; 
-            // 撮影終了の最終ボタンレイヤーを表示し、最下の進行ボタンは非表示
             finishLayer.style.display = "flex";
             actionContainer.style.display = "none"; 
             caption.innerText = "ご利用ありがとうございました。";
