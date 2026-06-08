@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v27.0 (Voice Release Version)</title>
+    <title>AI Director - Personal History Project v28.0 (Bright Voice Version)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
@@ -157,32 +157,30 @@
     let currentFacingMode = "user"; 
     let silenceTimer = null; 
 
-    // 💡 修正ポイント①：ご指定いただいたナレーション・構成順序に完全書き換え
     const steps = [
-        { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願い致します。", type: "voice_name" }, // ①
+        { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願い致します。", type: "voice_name" }, 
         { msg: "", type: "confirm" }, 
-        { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 }, // ②
-        { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" }, // ③
-        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial" }, // ④
+        { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 }, 
+        { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" }, 
+        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial" }, 
         { msg: "", type: "voice_deep" }, 
-        { msg: "では、あなたが見てほしいもう一つのものを見せてください", type: "lock2" }, // ⑤
+        { msg: "では、あなたが見てほしいもう一つのものを見せてください", type: "lock2" }, 
         { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial2" }, 
         { msg: "", type: "voice_deep2" } 
     ];
 
-    // 💡 修正ポイント②：AIディレクターの渋い発話コントロールシステム（無料・ローカル完結）
+    // AIの発話コントロールシステム
     function speakAI(text, onCompleteCallback) {
         if (!text) { if(onCompleteCallback) onCompleteCallback(); return; }
         
-        window.speechSynthesis.cancel(); // 前の発話をリセット
+        window.speechSynthesis.cancel(); 
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'ja-JP';
 
-        // ナレーション風にチューニング（少し低く、少しゆっくり）
-        utterance.rate = 0.95;  // 速度（1.0が標準）
-        utterance.pitch = 0.85; // 声の高さ（1.0が標準）
+        // 💡 修正ポイント：若くて明るい、ハキハキとしたトーンにチューニング
+        utterance.rate = 1.05;  // 速度（少しテンポを早く）
+        utterance.pitch = 1.15; // 声の高さ（高めで明るく、若々しい印象に）
 
-        // 喋り終わった瞬間の安全リレー制御
         utterance.onend = () => { if (onCompleteCallback) onCompleteCallback(); };
         utterance.onerror = () => { if (onCompleteCallback) onCompleteCallback(); };
 
@@ -268,7 +266,6 @@
             } else {
                 steps[currentStep-1].type = "voice_deep2";
             }
-            // PC用の発話
             speakAI(deepMsg);
         } else if (stepInside?.type === "voice_deep") {
             next(); 
@@ -283,13 +280,11 @@
         setTimeout(() => { reaction.style.opacity = 0; }, 2000);
     }
 
-    // 【撮影を開始する】ボタン押下時
     document.getElementById('btn-run').onclick = async () => {
         initSpeechRecognition();
         document.getElementById('start-screen').style.display = 'none';
         isActive = true;
 
-        // 💡 スマホの音声セキュリティロックを解除（空読みを1発キック）
         try { window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch(e){}
 
         const msg = steps[0].msg;
@@ -298,7 +293,6 @@
         currentStep = 1;
 
         if (isMobile) {
-            // 💡 修正ポイント③：AIが「お名前をお願い致します」と言い終わってからマイクを開く
             speakAI(msg, () => {
                 if (recognition) { try { recognition.start(); } catch(e){} }
             });
@@ -328,232 +322,4 @@
         }
         
         try {
-            const currentImgData = ctx.getImageData(0, 0, c.width, c.height);
-
-            if (lastImgData) {
-                let diff = 0;
-                for (let i = 0; i < currentImgData.data.length; i += 4) {
-                    const oldVal = (lastImgData.data[i] + lastImgData.data[i+1] + lastImgData.data[i+2]) / 3;
-                    const newVal = (currentImgData.data[i] + currentImgData.data[i+1] + currentImgData.data[i+2]) / 3;
-                    diff += Math.abs(newVal - oldVal);
-                }
-                const movementScore = diff / (c.width * c.height);
-                const step = steps[currentStep-1];
-
-                if (step?.type === "pan_timer" || step?.type === "lock" || step?.type === "lock2") {
-                    if (movementScore > 35) { 
-                        if (window.toastTimer) { clearTimeout(window.toastTimer); window.toastTimer = null; }
-                        toast.style.display = "block";
-                    } else if (movementScore < 25) { 
-                        if (!window.toastTimer && toast.style.display === "block") {
-                            window.toastTimer = setTimeout(() => { toast.style.display = "none"; window.toastTimer = null; }, 1000); 
-                        }
-                    }
-                }
-
-                if (step?.type === "lock" || step?.type === "lock2") {
-                    if (movementScore < 6) { 
-                        staticCount++;
-                        if (staticCount > 90) { 
-                            staticCount = 0;
-                            target.style.display = "none"; 
-                            
-                            if (isMobile) {
-                                // 静止画固定＆マイク奪還
-                                c.width = v.videoWidth || 640;
-                                c.height = v.videoHeight || 480;
-                                ctx.drawImage(v, 0, 0, c.width, c.height);
-                                c.style.display = "block"; 
-                                
-                                if (localStream) {
-                                    localStream.getTracks().forEach(track => track.stop());
-                                    v.srcObject = null;
-                                }
-
-                                const initialMsg = "これですね。これは何ですか。なぜ大切なのか、教えてください。";
-                                caption.innerText = initialMsg;
-                                
-                                if (step.type === "lock") {
-                                    currentStep = 5; 
-                                    // 💡 AIが初期質問を言い終わってから、スマホのマイクを安全起動
-                                    speakAI(initialMsg, () => {
-                                        if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
-                                        setupMobileAction("to_deep_question", "話を終える（次へ進む）");
-                                    });
-                                } else {
-                                    currentStep = 8; 
-                                    speakAI(initialMsg, () => {
-                                        if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
-                                        setupMobileAction("to_deep_question2", "話を終える（次へ進む）");
-                                    });
-                                }
-                            } else {
-                                setTimeout(next, 1000);
-                            }
-                        }
-                    } else {
-                        staticCount = 0; 
-                        target.style.display = "none";
-                    }
-                }
-            }
-            lastImgData = currentImgData;
-        } catch(e) { }
-
-        requestAnimationFrame(loop);
-    }
-
-    // スマホ用のアクション制御システム
-    function setupMobileAction(mode, btnText) {
-        if (mode === "none") { actionContainer.style.display = "none"; return; }
-        actionBtn.innerText = btnText;
-        actionContainer.style.display = "block";
-        
-        actionBtn.onclick = async () => {
-            actionContainer.style.display = "none";
-            
-            if (mode === "start_camera_after_voice") {
-                await startCamera("user");
-                loop(); 
-                next();
-            } 
-            else if (mode === "to_deep_question") {
-                if (recognition) { try{ recognition.stop(); }catch(e){} }
-                const deepMsg = generateDeepQuestion();
-                caption.innerText = deepMsg;
-                c.style.display = "none";
-                await startCamera("environment");
-                
-                // 💡 深掘り質問を発話
-                speakAI(deepMsg, () => {
-                    setupMobileAction("to_second_object_prompt", "話を終える（次へ進む）");
-                });
-            } 
-            else if (mode === "to_second_object_prompt") {
-                const promptMsg = "では、あなたが見てほしいもう一つのものを見せてください";
-                caption.innerText = promptMsg;
-                currentStep = 7; 
-                
-                // 💡 ⑤のセリフを発話
-                speakAI(promptMsg, () => {
-                    setupMobileAction("none", ""); // 自動ロックオンを待つためボタンを隠す
-                });
-            } 
-            else if (mode === "to_deep_question2") {
-                if (recognition) { try{ recognition.stop(); }catch(e){} }
-                const deepMsg = generateDeepQuestion();
-                caption.innerText = deepMsg;
-                c.style.display = "none";
-                await startCamera("environment");
-                
-                // 💡 2つ目の深掘り質問を発話
-                speakAI(deepMsg, () => {
-                    setupMobileAction("to_end_dialog", "話を終える（次へ進む）");
-                });
-            } 
-            else if (mode === "to_end_dialog") {
-                showEndDialog();
-            }
-        };
-    }
-
-    function generateDeepQuestion() {
-        let deepMsg = "";
-        if (capturedText.match(/(裏切り|挫折|後悔|大変|苦労)/)) {
-            deepMsg = "その出来事は、あなたの人生にどんな傷や、逆にどんな強さを残しましたか？";
-        } else if (capturedText.match(/(ほしかった|忘れられない|思い出|宝物)/)) {
-            deepMsg = "今、それが手に入ったら、当時の自分に何と言ってあげたいですか？";
-        } else if (capturedText.match(/(恋|別れ|約束)/)) {
-            deepMsg = "そのお相手は、今のあなたの暮らしや頑張りを、どこかで見守ってくれている気がしますか？";
-        } else if (capturedText.match(/(家族|父|母|子供|親)/)) {
-            deepMsg = "そのこと、ご家族の方は何と仰っているんですか？";
-        } else if (capturedText.match(/(仕事|会社|旅立ち|地元|故郷)/)) {
-            deepMsg = "そこから離れて今に至るまでに、一番の心の支えになったものは何ですか？";
-        } else {
-            deepMsg = "なぜ、今そのお話をしようと思ったんですか？その奥にある想いを聞かせてください。";
-        }
-        capturedText = ""; 
-        toggleBtn.style.display = "block";
-        return deepMsg;
-    }
-
-    function showEndDialog() {
-        const endMsg = "撮影を終了しますか？";
-        caption.innerText = endMsg; 
-        speakAI(endMsg, () => {
-            dialogLayer.style.display = "flex"; 
-        });
-    }
-
-    function selectChoice(action) {
-        dialogLayer.style.display = "none"; 
-        if (action === 'end') {
-            toggleBtn.style.display = "none"; 
-            finishLayer.style.display = "flex";
-            actionContainer.style.display = "none"; 
-            
-            // 💡 ⑥のご利用ありがとうございましたを発話
-            const closeMsg = "ご利用ありがとうございました。";
-            caption.innerText = closeMsg;
-            speakAI(closeMsg);
-        } else {
-            const contMsg = "もっと聞かせてください。その奥には、どんな物語がありますか？";
-            caption.innerText = contMsg;
-            speakAI(contMsg, () => {
-                const currentStepInside = steps[currentStep-1];
-                if (currentStepInside && currentStepInside.type.includes("2")) {
-                    setupMobileAction("to_end_dialog", "話を終える（次へ進む）");
-                } else {
-                    setupMobileAction("to_second_object_prompt", "話を終える（次へ進む）");
-                }
-            });
-        }
-    }
-
-    async function next() {
-        if (currentStep >= steps.length) return;
-        const s = steps[currentStep];
-
-        if (s.type === "confirm") {
-            const name = detectedName || "渡辺睦";
-            s.msg = `ありがとうございます。お名前は ${name} さんでよいですね？`;
-            caption.innerText = s.msg;
-            caption.style.opacity = 1;
-            currentStep++;
-
-            speakAI(s.msg, () => {
-                if (isMobile) { setupMobileAction("start_camera_after_voice", "はい、カメラを起動して次へ進む"); }
-            });
-            return;
-        }
-
-        if (s.type === "pan_timer") {
-            caption.innerText = s.msg;
-            caption.style.opacity = 1;
-            currentStep++;
-            await startCamera("environment");
-            
-            // 💡 ②の20秒間撮影指示を発話（言い終わってから20秒カウントを開始する親切設計）
-            speakAI(s.msg, () => {
-                setTimeout(next, s.t);
-            });
-            return;
-        }
-
-        if (s.type === "lock") {
-            caption.innerText = s.msg;
-            caption.style.opacity = 1;
-            currentStep++;
-            
-            // 💡 ③の大切なものを映してくださいを発話
-            speakAI(s.msg, () => { staticCount = 0; });
-            return;
-        }
-
-        caption.innerText = s.msg;
-        caption.style.opacity = 1;
-        currentStep++;
-    }
-</script>
-</body>
-</html>
+            const currentImgData
