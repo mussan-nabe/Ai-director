@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v34.0 (Custom Modal Universal)</title>
+    <title>AI Director - Personal History Project v35.0 (Let It Be Preview)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@900&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
-        #container { position: relative; width: 100vw; height: 100vh; }
+        #container { position: relative; width: 100vw; height: 100vh; background: #000; }
         
         video, canvas { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
         canvas { display: none; z-index: 2; }
-        video { z-index: 1; }
+        video { z-index: 1; transition: filter 1s ease; }
 
         .ui { position: absolute; z-index: 10; width: 100%; text-align: center; pointer-events: none; left: 0; }
         
@@ -59,16 +60,9 @@
             pointer-events: auto; cursor: pointer; -webkit-tap-highlight-color: transparent;
         }
 
-        /* 進行ボタン：ツールバーに被らないよう「画面下部20%」の位置へ引き上げ */
+        /* 進行ボタン */
         #action-container {
-            position: absolute; 
-            bottom: 20%; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            z-index: 160; 
-            width: 85%; 
-            display: none; 
-            pointer-events: auto;
+            position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%); z-index: 160; width: 85%; display: none; pointer-events: auto;
         }
         #action-btn {
             background: #007fff; color: #fff; padding: 20px; font-size: 1.3rem;
@@ -76,7 +70,7 @@
             box-shadow: 0 0 25px rgba(0,127,255,0.8); width: 100%;
         }
 
-        /* 💡 修正ポイント①：iPhoneのChromeでも100%確実にキーボード入力できるカスタム画面のCSS */
+        /* カスタムモーダル */
         #custom-modal {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(0,0,0,0.85); z-index: 250; display: none;
@@ -86,7 +80,7 @@
         .modal-box {
             background: #1c1c1e; border: 2px solid #007fff; border-radius: 20px;
             width: 90%; max-width: 400px; padding: 25px 20px; box-sizing: border-box;
-            text-align: center; box-shadow: 0 10px 30px rgba(0,127,255,0.4);
+Text-align: center; box-shadow: 0 10px 30px rgba(0,127,255,0.4);
         }
         .modal-box p { font-size: 1.1rem; font-weight: bold; margin-top: 0; margin-bottom: 20px; line-height: 1.5; color: #fff; }
         .modal-box input {
@@ -94,35 +88,58 @@
             color: #fff; border: 1px solid #555; border-radius: 10px; margin-bottom: 25px;
             box-sizing: border-box; text-align: center; outline: none;
         }
-        .modal-box input:focus { border-color: #007fff; box-shadow: 0 0 10px rgba(0,127,255,0.5); }
 
-        /* 最後の「撮影を終了する」ボタンもツールバーを避けて同じ高さに揃える */
-        #finish-layer { 
-            position: fixed; 
-            bottom: 20%; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            width: 85%; 
-            display: none; 
-            background: none; 
-            z-index: 210; 
-        }
-
-        #dialog-layer {
-            position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%);
-            display: none; flex-direction: column; gap: 15px; z-index: 150; width: 80%;
-        }
+        /* 最後の「撮影を終了する」ボタンの位置 */
+        #finish-layer { position: fixed; bottom: 20%; left: 50%; transform: translateX(-50%); width: 85%; display: none; background: none; z-index: 210; }
+        #dialog-layer { position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); display: none; flex-direction: column; gap: 15px; z-index: 150; width: 80%; }
 
         button { padding: 18px 30px; font-size: 1.1rem; background: #f00; color: #fff; border: none; border-radius: 50px; cursor: pointer; pointer-events: auto; font-weight: bold; box-shadow: 0 5px 15px rgba(0,0,0,0.3); width: 100%; -webkit-tap-highlight-color: transparent; }
         button:hover { background: #ff3333; }
         button.cancel { background: #333; border: 1px solid #555; color: #fff; }
         button.sub { background: #007fff; }
         .modal-box button { background: #007fff; border-radius: 12px; padding: 15px; width: 100%; }
+
+        /* 💡 演出拡張：映画的シネマスコープ（完成プレビュー時にせり出す黒帯） */
+        .cinema-mask {
+            position: absolute; left: 0; width: 100%; height: 0; background: #000;
+            z-index: 40; transition: height 1.5s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        #mask-top { top: 0; }
+        #mask-bottom { bottom: 0; }
+
+        /* 💡 演出拡張：テレビ東京品質の事後編集エミュレートテロップ */
+        #tv-render-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #050505; z-index: 300; display: none;
+            flex-direction: column; justify-content: center; align-items: center;
+        }
+        .spinner { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid #ff0000; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        #tv-preview-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 50; pointer-events: none; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;
+        }
+        #tv-main-title {
+            font-family: 'Noto Serif JP', serif; font-weight: 900; font-size: 1.8rem;
+            color: #fff; text-shadow: 0px 0px 15px rgba(0,0,0,1), 3px 3px 0px rgba(0,0,0,1);
+            text-align: center; line-height: 1.7; opacity: 0; transition: opacity 2s ease;
+            width: 100%; word-break: break-all;
+        }
+        #tv-sub-caption {
+            font-family: 'Noto Serif JP', serif; font-weight: 900; font-size: 1.2rem;
+            color: #ffff00; text-shadow: 2px 2px 5px #000; margin-top: 25px;
+            opacity: 0; transition: opacity 1.5s ease; text-align: center;
+        }
     </style>
 </head>
 <body>
 
 <div id="container">
+    <div id="mask-top" class="cinema-mask"></div>
+    <div id="mask-bottom" class="cinema-mask"></div>
+
     <div id="start-screen">
         <h1>AIディレクター：自分史撮影</h1>
         <div class="terms">
@@ -134,6 +151,16 @@
             <button id="btn-run">撮影を開始する</button>
             <button class="cancel" onclick="location.reload();">キャンセル</button>
         </div>
+    </div>
+
+    <div id="tv-render-screen">
+        <div class="spinner"></div>
+        <p style="font-family:'Noto Serif JP', serif; font-size:1.2rem; letter-spacing:2px; color:#fff;">テレビ東京 AI編集エンジン<br>動画レンダリング中...</p>
+    </div>
+
+    <div id="tv-preview-layer">
+        <div id="tv-main-title"></div>
+        <div id="tv-sub-caption"></div>
     </div>
 
     <div id="custom-modal">
@@ -156,7 +183,7 @@
     </div>
 
     <div id="finish-layer">
-        <button id="btn-finish" onclick="location.reload()">撮影を終了する</button>
+        <button id="btn-finish" onclick="location.reload()">再挑戦（リロード）</button>
     </div>
 
     <video id="v" autoplay playsinline muted></video>
@@ -182,11 +209,17 @@
     const actionContainer = document.getElementById('action-container');
     const actionBtn = document.getElementById('action-btn');
     
-    // 💡 自作モーダル用のDOM
     const customModal = document.getElementById('custom-modal');
     const modalTitle = document.getElementById('modal-title');
     const modalInput = document.getElementById('modal-input');
     const modalSubmitBtn = document.getElementById('modal-submit-btn');
+
+    // 演出用DOM
+    const maskTop = document.getElementById('mask-top');
+    const maskBottom = document.getElementById('mask-bottom');
+    const tvRenderScreen = document.getElementById('tv-render-screen');
+    const tvMainTitle = document.getElementById('tv-main-title');
+    const tvSubCaption = document.getElementById('tv-sub-caption');
 
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
@@ -201,6 +234,7 @@
     let currentFacingMode = "user"; 
     let silenceTimer = null; 
     let hasSpeechRecognition = true; 
+    let audioContextBgm = null; // Let It Be用
 
     const steps = [
         { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願い致します。", type: "voice_name" }, 
@@ -210,36 +244,28 @@
         { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial" }, 
         { msg: "", type: "voice_deep" }, 
         { msg: "では、あなたが見てほしいもう一つのものを見せてください", type: "lock2" }, 
-        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial2" }, 
+        { msg: "これですね。内容は同じです。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial2" }, 
         { msg: "", type: "voice_deep2" },
-        { msg: "ご自身の顔が映った状態で、家族へのメッセージをお話しください", type: "family_message" }
+        { msg: "カメラを切り替えてご自身の顔が映った状態で、家族へのメッセージをお話しください", type: "family_message" }
     ];
 
-    // AIの発話コントロール（若くて明るいトーン）
     function speakAI(text, onCompleteCallback) {
         if (!text) { if(onCompleteCallback) onCompleteCallback(); return; }
-        
         window.speechSynthesis.cancel(); 
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'ja-JP';
         utterance.rate = 1.05;  
         utterance.pitch = 1.15; 
-
         utterance.onend = () => { if (onCompleteCallback) onCompleteCallback(); };
         utterance.onerror = () => { if (onCompleteCallback) onCompleteCallback(); };
-
         window.speechSynthesis.speak(utterance);
     }
 
-    // 💡 修正ポイント③：不具合を起こす「prompt()」の代わりに、自作画面を呼び出す制御関数
     function showCustomInputModal(titleText, defaultVal, onValueSubmitted) {
         modalTitle.innerText = titleText;
         modalInput.value = defaultVal;
         customModal.style.display = "flex";
-        
-        // 即座に入力欄へフォーカスさせてキーボードを引っ張り出す
         setTimeout(() => { modalInput.focus(); }, 100);
-
         modalSubmitBtn.onclick = () => {
             customModal.style.display = "none";
             onValueSubmitted(modalInput.value.trim());
@@ -252,35 +278,29 @@
             v.srcObject = null;
             await new Promise(resolve => setTimeout(resolve, 800));
         }
-        
         currentFacingMode = facingMode;
         v.style.transform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
-
         const constraints = {
-            video: { facingMode: { exact: facingMode }, width: { ideal: 640 }, height: { ideal: 480 } },
+            video: { facingMode: facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
             audio: false 
         };
-
         try {
             localStream = await navigator.mediaDevices.getUserMedia(constraints);
         } catch(e) {
             constraints.video.facingMode = { ideal: facingMode };
             localStream = await navigator.mediaDevices.getUserMedia(constraints);
         }
-
         v.srcObject = localStream;
         await v.play();
     }
 
     function initSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
         const isActualSafari = isIOS && /Version\/.*Safari/i.test(navigator.userAgent);
 
         if (!SpeechRecognition || (isIOS && !isActualSafari)) {
             hasSpeechRecognition = false;
-            console.warn("iOSサードパーティブラウザ制限を検知。キーボード入力に切り替えます。");
             return;
         }
         
@@ -294,7 +314,11 @@
             const transcript = result[0].transcript;
             
             if (silenceTimer) clearTimeout(silenceTimer);
-            capturedText = transcript;
+            
+            // 💡 修正ポイント：家族メッセージフェーズ（ステップ10）の音声をしっかり記憶に焼き付ける
+            if (currentStep >= 9) {
+                capturedText = transcript;
+            }
 
             if (currentStep === 1) {
                 detectedName = transcript.replace(/(です|と言います|私は|私の名前は|と申します)/g, "").trim();
@@ -317,9 +341,7 @@
         };
 
         recognition.onend = () => {
-            if (isActive && !isMobile && currentStep <= 1) {
-                try { recognition.start(); } catch(e){}
-            }
+            if (isActive && !isMobile && currentStep <= 1) { try { recognition.start(); } catch(e){} }
         };
     }
 
@@ -328,15 +350,10 @@
         if (stepInside?.type === "voice_initial" || stepInside?.type === "voice_initial2") {
             const deepMsg = generateDeepQuestion();
             caption.innerText = deepMsg;
-            if (stepInside.type === "voice_initial") {
-                steps[currentStep-1].type = "voice_deep";
-            } else {
-                steps[currentStep-1].type = "voice_deep2";
-            }
+            if (stepInside.type === "voice_initial") { steps[currentStep-1].type = "voice_deep"; } 
+            else { steps[currentStep-1].type = "voice_deep2"; }
             speakAI(deepMsg);
-        } else if (stepInside?.type === "voice_deep") {
-            next(); 
-        } else if (stepInside?.type === "voice_deep2") {
+        } else if (stepInside?.type === "voice_deep" || stepInside?.type === "voice_deep2") {
             next(); 
         } else if (stepInside?.type === "family_message") {
             showEndDialog(); 
@@ -353,6 +370,9 @@
         initSpeechRecognition();
         document.getElementById('start-screen').style.display = 'none';
         isActive = true;
+        
+        // Let It Be用AudioContext生成
+        audioContextBgm = new (window.AudioContext || window.webkitAudioContext)();
 
         try { window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch(e){}
 
@@ -363,9 +383,7 @@
 
         if (isMobile) {
             const btnLabel = hasSpeechRecognition ? "🎙️ お名前を話す" : "⌨️ お名前を文字で入力";
-            speakAI(msg, () => {
-                setupMobileAction("start_voice_name", btnLabel);
-            });
+            speakAI(msg, () => { setupMobileAction("start_voice_name", btnLabel); });
         } else {
             try {
                 await startCamera("user"); 
@@ -385,15 +403,12 @@
 
     function loop() {
         if (!isActive) { requestAnimationFrame(loop); return; }
-
         if (v.srcObject) {
             c.width = 160; c.height = 120;
             try { ctx.drawImage(v, 0, 0, c.width, c.height); } catch(e){}
         }
-        
         try {
             const currentImgData = ctx.getImageData(0, 0, c.width, c.height);
-
             if (lastImgData) {
                 let diff = 0;
                 for (let i = 0; i < currentImgData.data.length; i += 4) {
@@ -427,45 +442,29 @@
                                 c.height = v.videoHeight || 480;
                                 ctx.drawImage(v, 0, 0, c.width, c.height);
                                 c.style.display = "block"; 
-                                
-                                if (localStream) {
-                                    localStream.getTracks().forEach(track => track.stop());
-                                    v.srcObject = null;
-                                }
+                                if (localStream) { localStream.getTracks().forEach(track => track.stop()); v.srcObject = null; }
 
-                                const initialMsg = "これですね。これは何ですか。なぜ大切なのか、教えてください。";
+                                const initialMsg = "これですね。内容は同じです。これは何ですか。なぜ大切なのか、教えてください。";
                                 caption.innerText = initialMsg;
-                                
                                 const btnLabel = hasSpeechRecognition ? "🎙️ お話を始める" : "⌨️ テキストで回答する";
 
                                 if (step.type === "lock") {
                                     currentStep = 5; 
-                                    speakAI(initialMsg, () => {
-                                        setupMobileAction("start_voice_initial", btnLabel);
-                                    });
+                                    speakAI(initialMsg, () => { setupMobileAction("start_voice_initial", btnLabel); });
                                 } else {
                                     currentStep = 8; 
-                                    speakAI(initialMsg, () => {
-                                        setupMobileAction("start_voice_initial2", btnLabel);
-                                    });
+                                    speakAI(initialMsg, () => { setupMobileAction("start_voice_initial2", btnLabel); });
                                 }
-                            } else {
-                                setTimeout(next, 1000);
-                            }
+                            } else { setTimeout(next, 1000); }
                         }
-                    } else {
-                        staticCount = 0; 
-                        target.style.display = "none";
-                    }
+                    } else { staticCount = 0; target.style.display = "none"; }
                 }
             }
             lastImgData = currentImgData;
         } catch(e) { }
-
         requestAnimationFrame(loop);
     }
 
-    // スマホ用のアクション制御システム
     function setupMobileAction(mode, btnText) {
         if (mode === "none") { actionContainer.style.display = "none"; return; }
         actionBtn.innerText = btnText;
@@ -474,18 +473,14 @@
         actionBtn.onclick = async () => {
             actionContainer.style.display = "none";
             
-            // 💡 修正ポイント④：【お名前入力】自作モーダルを呼び出し、iPhone Chromeでも確実に文字入力を可能にする
             if (mode === "start_voice_name") {
-                if (hasSpeechRecognition) {
-                    if (recognition) { try { recognition.start(); } catch(e){} }
-                } else {
+                if (hasSpeechRecognition) { if (recognition) { try { recognition.start(); } catch(e){} } } 
+                else {
                     showCustomInputModal("お名前を入力してください", "渡辺睦", (text) => {
-                        detectedName = text ? text : "渡辺睦";
-                        next(); 
+                        detectedName = text ? text : "渡辺睦"; next(); 
                     });
                 }
             }
-            // 💡 修正ポイント⑤：【1つ目のオブジェクト入力】
             else if (mode === "start_voice_initial") {
                 if (hasSpeechRecognition) {
                     if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
@@ -494,16 +489,12 @@
                     showCustomInputModal("これは何ですか？なぜ大切なのか教えてください", "", async (text) => {
                         capturedText = text ? text : "";
                         const deepMsg = generateDeepQuestion();
-                        caption.innerText = deepMsg;
-                        c.style.display = "none";
+                        caption.innerText = deepMsg; c.style.display = "none";
                         await startCamera("environment");
-                        speakAI(deepMsg, () => {
-                            setupMobileAction("to_second_object_prompt", "次へ進む");
-                        });
+                        speakAI(deepMsg, () => { setupMobileAction("to_second_object_prompt", "次へ進む"); });
                     });
                 }
             }
-            // 💡 修正ポイント⑥：【2つ目のオブジェクト入力】
             else if (mode === "start_voice_initial2") {
                 if (hasSpeechRecognition) {
                     if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
@@ -512,113 +503,154 @@
                     showCustomInputModal("これは何ですか？なぜ大切なのか教えてください", "", async (text) => {
                         capturedText = text ? text : "";
                         const deepMsg = generateDeepQuestion();
-                        caption.innerText = deepMsg;
-                        c.style.display = "none";
+                        caption.innerText = deepMsg; c.style.display = "none";
                         await startCamera("environment");
-                        speakAI(deepMsg, () => {
-                            setupMobileAction("to_family_message", "次へ進む");
-                        });
+                        speakAI(deepMsg, () => { setupMobileAction("to_family_message", "次へ進む"); });
                     });
                 }
             }
-            else if (mode === "start_camera_after_voice") {
-                await startCamera("user");
-                loop(); 
-                next();
-            } 
+            else if (mode === "start_camera_after_voice") { await startCamera("user"); loop(); next(); } 
             else if (mode === "to_deep_question") {
                 if (recognition) { try{ recognition.stop(); }catch(e){} }
                 const deepMsg = generateDeepQuestion();
-                caption.innerText = deepMsg;
-                c.style.display = "none";
+                caption.innerText = deepMsg; c.style.display = "none";
                 await startCamera("environment");
-                
-                speakAI(deepMsg, () => {
-                    setupMobileAction("to_second_object_prompt", "次へ進む");
-                });
+                speakAI(deepMsg, () => { setupMobileAction("to_second_object_prompt", "次へ進む"); });
             } 
             else if (mode === "to_second_object_prompt") {
                 const promptMsg = "では、あなたが見てほしいもう一つのものを見せてください";
-                caption.innerText = promptMsg;
-                currentStep = 7; 
-                
-                speakAI(promptMsg, () => {
-                    setupMobileAction("none", ""); 
-                });
+                caption.innerText = promptMsg; currentStep = 7; 
+                speakAI(promptMsg, () => { setupMobileAction("none", ""); });
             } 
             else if (mode === "to_deep_question2") {
                 if (recognition) { try{ recognition.stop(); }catch(e){} }
                 const deepMsg = generateDeepQuestion();
-                caption.innerText = deepMsg;
-                c.style.display = "none";
+                caption.innerText = deepMsg; c.style.display = "none";
                 await startCamera("environment");
-                
-                speakAI(deepMsg, () => {
-                    setupMobileAction("to_family_message", "次へ進む");
-                });
+                speakAI(deepMsg, () => { setupMobileAction("to_family_message", "次へ進む"); });
             } 
             else if (mode === "to_family_message") {
-                const famMsg = "ご自身の顔が映った状態で、家族へのメッセージをお話しください";
-                caption.innerText = famMsg;
-                c.style.display = "none";
-                await startCamera("user");
-                currentStep = 10; 
-                
+                const famMsg = "カメラを切り替えてご自身の顔が映った状態で、家族へのメッセージをお話しください";
+                caption.innerText = famMsg; c.style.display = "none";
+                await startCamera("user"); currentStep = 10; 
                 speakAI(famMsg, () => {
-                    setupMobileAction("to_end_dialog", "話を終える（次へ進む）");
+                    const nextBtnLabel = hasSpeechRecognition ? "🎙️ メッセージを話す" : "⌨️ 文字で入力する";
+                    setupMobileAction("trigger_final_voice", nextBtnLabel);
                 });
             }
-            else if (mode === "to_end_dialog") {
-                showEndDialog();
+            else if (mode === "trigger_final_voice") {
+                if (hasSpeechRecognition) {
+                    if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
+                    setupMobileAction("to_end_dialog", "話を終える（次へ進む）");
+                } else {
+                    showCustomInputModal("家族へのメッセージを入力してください", "", (text) => {
+                        capturedText = text ? text : ""; showEndDialog();
+                    });
+                }
             }
+            else if (mode === "to_end_dialog") { if (recognition) { try{ recognition.stop(); }catch(e){} } showEndDialog(); }
         };
     }
 
     function generateDeepQuestion() {
         let deepMsg = "";
-        if (capturedText.match(/(裏切り|挫折|後悔|大変|苦労)/)) {
-            deepMsg = "その出来事は、あなたの人生にどんな傷や、逆にどんな強さを残しましたか？";
-        } else if (capturedText.match(/(ほしかった|忘れられない|思い出|宝物)/)) {
-            deepMsg = "今、それが手に入ったら、当時の自分に何と言ってあげたいですか？";
-        } else if (capturedText.match(/(恋|別れ|約束)/)) {
-            deepMsg = "そのお相手は、今のあなたの暮らしや頑張りを、どこかで見守ってくれている気がしますか？";
-        } else if (capturedText.match(/(家族|父|母|子供|親)/)) {
-            deepMsg = "そのこと、ご家族の方は何と仰っているんですか？";
-        } else if (capturedText.match(/(仕事|会社|旅立ち|地元|故郷)/)) {
-            deepMsg = "そこから離れて今に至るまでに、一番の心の支えになったものは何ですか？";
-        } else {
-            deepMsg = "なぜ、今そのお話をしようと思ったんですか？その奥にある想いを聞かせてください。";
-        }
-        capturedText = ""; 
-        toggleBtn.style.display = "block";
-        return deepMsg;
+        if (capturedText.match(/(裏切り|挫折|後悔|大変|苦労)/)) { deepMsg = "その出来事は、あなたの人生にどんな傷や、逆にどんな強さを残しましたか？"; } 
+        else if (capturedText.match(/(ほしかった|忘れられない|思い出|宝物)/)) { deepMsg = "今、それが手に入ったら、当時の自分に何と言ってあげたいですか？"; } 
+        else if (capturedText.match(/(恋|別れ|約束)/)) { deepMsg = "そのお相手は、今のあなたの暮らしや頑張りを、どこかで見守ってくれている気がしますか？"; } 
+        else if (capturedText.match(/(家族|父|母|子供|親)/)) { deepMsg = "そのこと、ご家族の方は何と仰っているんですか？"; } 
+        else if (capturedText.match(/(仕事|会社|旅立ち|地元|故郷)/)) { deepMsg = "そこから離れて今に至るまでに、一番の心の支えになったものは何ですか？"; } 
+        else { deepMsg = "なぜ、今そのお話をしようと思ったんですか？その奥にある想いを聞かせてください。"; }
+        capturedText = ""; toggleBtn.style.display = "block"; return deepMsg;
     }
 
     function showEndDialog() {
         const endMsg = "撮影を終了しますか？";
         caption.innerText = endMsg; 
-        speakAI(endMsg, () => {
-            dialogLayer.style.display = "flex"; 
-        });
+        speakAI(endMsg, () => { dialogLayer.style.display = "flex"; });
     }
 
     function selectChoice(action) {
         dialogLayer.style.display = "none"; 
         if (action === 'end') {
             toggleBtn.style.display = "none"; 
-            finishLayer.style.display = "flex";
             actionContainer.style.display = "none"; 
-            
-            const closeMsg = "ご利用ありがとうございました。";
-            caption.innerText = closeMsg;
-            speakAI(closeMsg);
+            caption.style.opacity = 0;
+
+            // 💡 睦様、ここが「編集魔法」をスマホ内で即座に体験する新エミュレータです！
+            runTvPostProduction();
         } else {
             const contMsg = "もっと聞かせてください。その奥には、どんな物語がありますか？";
             caption.innerText = contMsg;
-            speakAI(contMsg, () => {
-                setupMobileAction("to_end_dialog", "話を終える（次へ進む）");
-            });
+            speakAI(contMsg, () => { setupMobileAction("to_end_dialog", "話を終える（次へ進む）"); });
         }
+    }
+
+    // 💡 新設：テレビ東京の編集魔法・全自動擬似プレビュー上映ロジック
+    function runTvPostProduction() {
+        // 1. まず「レンダリング中」のインサート画面を3秒間挟み、編集の期待感を高める
+        tvRenderScreen.style.display = "flex";
+
+        setTimeout(async () => {
+            tvRenderScreen.style.display = "none"; // レンダリング完了
+            
+            // 2. スマホのカメラをインカメラ（自撮り）で緊急再起動し、「上映用の生背景」にする
+            await startCamera("user");
+            
+            // 3. 映像ルックを映画・ドキュメンタリー調（カラーグレーディング風）に強制加工
+            v.style.filter = "grayscale(0.2) contrast(1.15) brightness(0.95)";
+            
+            // 4. 映画的上下黒帯（シネマスコープ）をせり出させる
+            maskTop.style.height = "13vh";
+            maskBottom.style.height = "13vh";
+
+            // 5. あのビートルズの『Let It Be』風の温かい和音イントロをWeb Audioで自動再生！
+            playLetItBeSynth();
+
+            // 6. 1.5秒後、テレビ東京のドキュメンタリーでおなじみの「あの極太明朝体テロップ」がスッと降臨！
+            setTimeout(() => {
+                const finalQuote = capturedText.trim() || "なぜ、今そのお話をしようと思ったのか。その奥にある想い。";
+                tvMainTitle.innerText = `「 ${finalQuote} 」`;
+                tvMainTitle.style.opacity = 1;
+            }, 1.50);
+
+            // 7. 4.5秒後、エンドクレジットと、トップへ戻るためのリロードボタンを露出
+            setTimeout(() => {
+                const finalName = detectedName || "渡辺 睦";
+                tvSubCaption.innerHTML = `語り手：${finalName}<br><br><span style="font-size:0.85rem;color:#ccc;letter-spacing:1px;">自分史ドキュメンタリープロジェクト<br>©︎テレビ東京</span>`;
+                tvSubCaption.style.opacity = 1;
+                finishLayer.style.display = "flex"; // リロードボタン出現
+            }, 4500);
+
+        }, 3000); // 3秒間のレンダリング演出
+    }
+
+    // 擬似Let It Beイントロシンセコード
+    function playLetItBeSynth() {
+        if (!audioContextBgm) return;
+        const ctxB = audioContextBgm;
+        if (ctxB.state === 'suspended') ctxB.resume();
+        const chords = [
+            [261.63, 329.63, 392.00], // C
+            [196.00, 246.94, 293.66], // G
+            [220.00, 261.63, 329.63], // Am
+            [174.61, 220.00, 261.63]  // F
+        ];
+        let time = ctxB.currentTime;
+        chords.forEach((chord, index) => {
+            chord.forEach(freq => {
+                const osc = ctxB.createOscillator();
+                const gainNode = ctxB.createGain();
+                osc.type = 'triangle';
+                osc.frequency.value = freq;
+                gainNode.gain.setValueAtTime(0, time + (index * 1.3));
+                gainNode.gain.linearRampToValueAtTime(0.12, time + (index * 1.3) + 0.2);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, time + (index * 1.3) + 1.5);
+                osc.connect(gainNode);
+                gainNode.connect(ctxB.destination);
+                osc.start(time + (index * 1.3));
+                osc.stop(time + (index * 1.3) + 1.6);
+            });
+        });
     }
 
     async function next() {
@@ -631,10 +663,7 @@
             caption.innerText = s.msg;
             caption.style.opacity = 1;
             currentStep++;
-
-            speakAI(s.msg, () => {
-                if (isMobile) { setupMobileAction("start_camera_after_voice", "はい、カメラを起動して次へ進む"); }
-            });
+            speakAI(s.msg, () => { if (isMobile) { setupMobileAction("start_camera_after_voice", "はい、カメラを起動して次へ進む"); } });
             return;
         }
 
@@ -643,10 +672,7 @@
             caption.style.opacity = 1;
             currentStep++;
             await startCamera("environment");
-            
-            speakAI(s.msg, () => {
-                setTimeout(next, s.t);
-            });
+            speakAI(s.msg, () => { setTimeout(next, s.t); });
             return;
         }
 
@@ -654,7 +680,6 @@
             caption.innerText = s.msg;
             caption.style.opacity = 1;
             currentStep++;
-            
             speakAI(s.msg, () => { staticCount = 0; });
             return;
         }
@@ -665,10 +690,8 @@
             currentStep++;
             await startCamera("user");
             speakAI(s.msg, () => {
-                if (hasSpeechRecognition && recognition) { try { recognition.start(); } catch(e){} }
-                else {
-                    setupMobileAction("to_end_dialog", "話を終える（次へ進む）");
-                }
+                const nextBtnLabel = hasSpeechRecognition ? "🎙️ メッセージを話す" : "⌨️ 文字で入力する";
+                setupMobileAction("trigger_final_voice", nextBtnLabel);
             });
             return;
         }
