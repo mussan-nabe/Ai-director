@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v33.0 (Emergency Fix)</title>
+    <title>AI Director - Personal History Project v34.0 (Custom Modal Universal)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
@@ -39,7 +39,7 @@
             display: none; box-shadow: 0 0 30px #f00; z-index: 5;
         }
 
-        /* 🛠 復元ポイント：スタート画面の最前面レイアウトを再適用 */
+        /* スタート画面 */
         #start-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: #fff url('https://images.tango-frames.com/api/v1/images/f43f83.png') no-repeat center center;
@@ -76,6 +76,26 @@
             box-shadow: 0 0 25px rgba(0,127,255,0.8); width: 100%;
         }
 
+        /* 💡 修正ポイント①：iPhoneのChromeでも100%確実にキーボード入力できるカスタム画面のCSS */
+        #custom-modal {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.85); z-index: 250; display: none;
+            flex-direction: column; justify-content: center; align-items: center; padding: 20px;
+            box-sizing: border-box;
+        }
+        .modal-box {
+            background: #1c1c1e; border: 2px solid #007fff; border-radius: 20px;
+            width: 90%; max-width: 400px; padding: 25px 20px; box-sizing: border-box;
+            text-align: center; box-shadow: 0 10px 30px rgba(0,127,255,0.4);
+        }
+        .modal-box p { font-size: 1.1rem; font-weight: bold; margin-top: 0; margin-bottom: 20px; line-height: 1.5; color: #fff; }
+        .modal-box input {
+            width: 100%; padding: 15px; font-size: 1.2rem; background: #2c2c2e;
+            color: #fff; border: 1px solid #555; border-radius: 10px; margin-bottom: 25px;
+            box-sizing: border-box; text-align: center; outline: none;
+        }
+        .modal-box input:focus { border-color: #007fff; box-shadow: 0 0 10px rgba(0,127,255,0.5); }
+
         /* 最後の「撮影を終了する」ボタンもツールバーを避けて同じ高さに揃える */
         #finish-layer { 
             position: fixed; 
@@ -97,6 +117,7 @@
         button:hover { background: #ff3333; }
         button.cancel { background: #333; border: 1px solid #555; color: #fff; }
         button.sub { background: #007fff; }
+        .modal-box button { background: #007fff; border-radius: 12px; padding: 15px; width: 100%; }
     </style>
 </head>
 <body>
@@ -106,12 +127,20 @@
         <h1>AIディレクター：自分史撮影</h1>
         <div class="terms">
             <h3 style="margin-top:0; color:#ff3333; font-size: 1rem;">【最初にお読みください】</h3>
-            ・本件において撮影された映像の著作権、肖像権についてはテレビ東京に帰属します。<br>
+            ・本件において撮影された映像の著作権、肖像権についてはテレビテレビ東京に帰属します。<br>
             ・映像を撮影した後に、「編集を申し込む」ボタンを押した時点で料金が発生します。
         </div>
         <div class="btn-group">
             <button id="btn-run">撮影を開始する</button>
             <button class="cancel" onclick="location.reload();">キャンセル</button>
+        </div>
+    </div>
+
+    <div id="custom-modal">
+        <div class="modal-box">
+            <p id="modal-title">質問内容</p>
+            <input type="text" id="modal-input" placeholder="ここに入力してください" autofocus>
+            <button id="modal-submit-btn">決定</button>
         </div>
     </div>
 
@@ -152,6 +181,12 @@
     const toggleBtn = document.getElementById('camera-toggle-btn');
     const actionContainer = document.getElementById('action-container');
     const actionBtn = document.getElementById('action-btn');
+    
+    // 💡 自作モーダル用のDOM
+    const customModal = document.getElementById('custom-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalInput = document.getElementById('modal-input');
+    const modalSubmitBtn = document.getElementById('modal-submit-btn');
 
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
@@ -175,11 +210,12 @@
         { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial" }, 
         { msg: "", type: "voice_deep" }, 
         { msg: "では、あなたが見てほしいもう一つのものを見せてください", type: "lock2" }, 
-        { msg: "これですね。内容は同じです。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial2" }, 
+        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial2" }, 
         { msg: "", type: "voice_deep2" },
-        { msg: "カメラを切り替えてご自身の顔が映った状態で、家族へのメッセージをお話しください", type: "family_message" }
+        { msg: "ご自身の顔が映った状態で、家族へのメッセージをお話しください", type: "family_message" }
     ];
 
+    // AIの発話コントロール（若くて明るいトーン）
     function speakAI(text, onCompleteCallback) {
         if (!text) { if(onCompleteCallback) onCompleteCallback(); return; }
         
@@ -193,6 +229,21 @@
         utterance.onerror = () => { if (onCompleteCallback) onCompleteCallback(); };
 
         window.speechSynthesis.speak(utterance);
+    }
+
+    // 💡 修正ポイント③：不具合を起こす「prompt()」の代わりに、自作画面を呼び出す制御関数
+    function showCustomInputModal(titleText, defaultVal, onValueSubmitted) {
+        modalTitle.innerText = titleText;
+        modalInput.value = defaultVal;
+        customModal.style.display = "flex";
+        
+        // 即座に入力欄へフォーカスさせてキーボードを引っ張り出す
+        setTimeout(() => { modalInput.focus(); }, 100);
+
+        modalSubmitBtn.onclick = () => {
+            customModal.style.display = "none";
+            onValueSubmitted(modalInput.value.trim());
+        };
     }
 
     async function startCamera(facingMode) {
@@ -382,7 +433,7 @@
                                     v.srcObject = null;
                                 }
 
-                                const initialMsg = "これですね。内容は同じです。これは何ですか。なぜ大切なのか、教えてください。";
+                                const initialMsg = "これですね。これは何ですか。なぜ大切なのか、教えてください。";
                                 caption.innerText = initialMsg;
                                 
                                 const btnLabel = hasSpeechRecognition ? "🎙️ お話を始める" : "⌨️ テキストで回答する";
@@ -414,6 +465,7 @@
         requestAnimationFrame(loop);
     }
 
+    // スマホ用のアクション制御システム
     function setupMobileAction(mode, btnText) {
         if (mode === "none") { actionContainer.style.display = "none"; return; }
         actionBtn.innerText = btnText;
@@ -422,44 +474,50 @@
         actionBtn.onclick = async () => {
             actionContainer.style.display = "none";
             
+            // 💡 修正ポイント④：【お名前入力】自作モーダルを呼び出し、iPhone Chromeでも確実に文字入力を可能にする
             if (mode === "start_voice_name") {
                 if (hasSpeechRecognition) {
                     if (recognition) { try { recognition.start(); } catch(e){} }
                 } else {
-                    const typed = prompt("お名前を入力してください（マイク非対応ブラウザ用）", "渡辺睦");
-                    detectedName = typed ? typed.trim() : "渡辺睦";
-                    next(); 
+                    showCustomInputModal("お名前を入力してください", "渡辺睦", (text) => {
+                        detectedName = text ? text : "渡辺睦";
+                        next(); 
+                    });
                 }
             }
+            // 💡 修正ポイント⑤：【1つ目のオブジェクト入力】
             else if (mode === "start_voice_initial") {
                 if (hasSpeechRecognition) {
                     if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
                     setupMobileAction("to_deep_question", "話を終える（次へ進む）");
                 } else {
-                    const typed = prompt("これは何ですか？なぜ大切なのか教えてください（マイク非対応用）", "");
-                    capturedText = typed ? typed.trim() : "";
-                    const deepMsg = generateDeepQuestion();
-                    caption.innerText = deepMsg;
-                    c.style.display = "none";
-                    await startCamera("environment");
-                    speakAI(deepMsg, () => {
-                        setupMobileAction("to_second_object_prompt", "次へ進む");
+                    showCustomInputModal("これは何ですか？なぜ大切なのか教えてください", "", async (text) => {
+                        capturedText = text ? text : "";
+                        const deepMsg = generateDeepQuestion();
+                        caption.innerText = deepMsg;
+                        c.style.display = "none";
+                        await startCamera("environment");
+                        speakAI(deepMsg, () => {
+                            setupMobileAction("to_second_object_prompt", "次へ進む");
+                        });
                     });
                 }
             }
+            // 💡 修正ポイント⑥：【2つ目のオブジェクト入力】
             else if (mode === "start_voice_initial2") {
                 if (hasSpeechRecognition) {
                     if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
                     setupMobileAction("to_deep_question2", "話を終える（次へ進む）");
                 } else {
-                    const typed = prompt("これは何ですか？なぜ大切なのか教えてください（マイク非対応用）", "");
-                    capturedText = typed ? typed.trim() : "";
-                    const deepMsg = generateDeepQuestion();
-                    caption.innerText = deepMsg;
-                    c.style.display = "none";
-                    await startCamera("environment");
-                    speakAI(deepMsg, () => {
-                        setupMobileAction("to_family_message", "次へ進む");
+                    showCustomInputModal("これは何ですか？なぜ大切なのか教えてください", "", async (text) => {
+                        capturedText = text ? text : "";
+                        const deepMsg = generateDeepQuestion();
+                        caption.innerText = deepMsg;
+                        c.style.display = "none";
+                        await startCamera("environment");
+                        speakAI(deepMsg, () => {
+                            setupMobileAction("to_family_message", "次へ進む");
+                        });
                     });
                 }
             }
@@ -500,7 +558,7 @@
                 });
             } 
             else if (mode === "to_family_message") {
-                const famMsg = "カメラを切り替えてご自身の顔が映った状態で、家族へのメッセージをお話しください";
+                const famMsg = "ご自身の顔が映った状態で、家族へのメッセージをお話しください";
                 caption.innerText = famMsg;
                 c.style.display = "none";
                 await startCamera("user");
