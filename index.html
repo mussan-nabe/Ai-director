@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v29.0 (Family Message Update)</title>
+    <title>AI Director - Personal History Project v30.0 (iOS/Android Universal Version)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
@@ -106,7 +106,6 @@
         </div>
     </div>
 
-    <!-- スマホ専用ステップ進行ボタン -->
     <div id="action-container">
         <button id="action-btn">次へ進む</button>
     </div>
@@ -158,7 +157,6 @@
     let currentFacingMode = "user"; 
     let silenceTimer = null; 
 
-    // 💡 修正ポイント①：家族メッセージ用ステップ（一番最後）をタイムラインへ正式追加
     const steps = [
         { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願い致します。", type: "voice_name" }, 
         { msg: "", type: "confirm" }, 
@@ -167,21 +165,20 @@
         { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial" }, 
         { msg: "", type: "voice_deep" }, 
         { msg: "では、あなたが見てほしいもう一つのものを見せてください", type: "lock2" }, 
-        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial2" }, 
+        { msg: "これですね。内容は同じです。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial2" }, 
         { msg: "", type: "voice_deep2" },
-        { msg: "カメラを切り替えてご自身の顔が映った状態で、家族へのメッセージをお話しください", type: "family_message" } // 追加
+        { msg: "カメラを切り替えてご自身の顔が映った状態で、家族へのメッセージをお話しください", type: "family_message" }
     ];
 
-    // AIの発話コントロール（若くて明るいトーンを継続記憶）
+    // AIの発話コントロール（若くて明るいトーン）
     function speakAI(text, onCompleteCallback) {
         if (!text) { if(onCompleteCallback) onCompleteCallback(); return; }
         
         window.speechSynthesis.cancel(); 
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'ja-JP';
-
-        utterance.rate = 1.05;  // 速度（ハキハキ）
-        utterance.pitch = 1.15; // 高さ（明るめ・若々しい）
+        utterance.rate = 1.05;  
+        utterance.pitch = 1.15; 
 
         utterance.onend = () => { if (onCompleteCallback) onCompleteCallback(); };
         utterance.onerror = () => { if (onCompleteCallback) onCompleteCallback(); };
@@ -258,7 +255,6 @@
         };
     }
 
-    // PC用の会話終了判定
     function handleSilenceEnd() {
         const stepInside = steps[currentStep-1];
         if (stepInside?.type === "voice_initial" || stepInside?.type === "voice_initial2") {
@@ -273,9 +269,9 @@
         } else if (stepInside?.type === "voice_deep") {
             next(); 
         } else if (stepInside?.type === "voice_deep2") {
-            next(); // 2つ目の深掘りが終わったら家族メッセージへ進む
+            next(); 
         } else if (stepInside?.type === "family_message") {
-            showEndDialog(); // 家族メッセージが終わったら終了確認ダイアログへ
+            showEndDialog(); 
         }
     }
 
@@ -298,8 +294,9 @@
         currentStep = 1;
 
         if (isMobile) {
+            // 💡 修正ポイント①：AIが話し終わったら「🎙️お名前を話す」ボタンを出して、iPhoneの制限を完全突破
             speakAI(msg, () => {
-                if (recognition) { try { recognition.start(); } catch(e){} }
+                setupMobileAction("start_voice_name", "🎙️ お名前を話す");
             });
         } else {
             try {
@@ -373,15 +370,14 @@
                                 
                                 if (step.type === "lock") {
                                     currentStep = 5; 
+                                    // 💡 修正ポイント②：AIが喋り終わったら、iPhoneの制限をクリアするため「🎙️お話を始める」ボタンを出現させる
                                     speakAI(initialMsg, () => {
-                                        if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
-                                        setupMobileAction("to_deep_question", "話を終える（次へ進む）");
+                                        setupMobileAction("start_voice_initial", "🎙️ お話を始める");
                                     });
                                 } else {
                                     currentStep = 8; 
                                     speakAI(initialMsg, () => {
-                                        if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
-                                        setupMobileAction("to_deep_question2", "話を終える（次へ進む）");
+                                        setupMobileAction("start_voice_initial2", "🎙️ お話を始める");
                                     });
                                 }
                             } else {
@@ -409,7 +405,21 @@
         actionBtn.onclick = async () => {
             actionContainer.style.display = "none";
             
-            if (mode === "start_camera_after_voice") {
+            // 💡 修正ポイント③：[お名前を話す] タップの瞬間（完全同期）にマイクを起動！これでiPhoneでも100%動く
+            if (mode === "start_voice_name") {
+                if (recognition) { try { recognition.start(); } catch(e){} }
+            }
+            // 💡 修正ポイント④：1つ目の[お話を始める] タップの瞬間にマイクを起動
+            else if (mode === "start_voice_initial") {
+                if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
+                setupMobileAction("to_deep_question", "話を終える（次へ進む）");
+            }
+            // 💡 修正ポイント⑤：2つ目の[お話を始める] タップの瞬間にマイクを起動
+            else if (mode === "start_voice_initial2") {
+                if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
+                setupMobileAction("to_deep_question2", "話を終える（次へ進む）");
+            }
+            else if (mode === "start_camera_after_voice") {
                 await startCamera("user");
                 loop(); 
                 next();
@@ -422,7 +432,7 @@
                 await startCamera("environment");
                 
                 speakAI(deepMsg, () => {
-                    setupMobileAction("to_second_object_prompt", "話を終える（次へ進む）");
+                    setupMobileAction("to_second_object_prompt", "次へ進む");
                 });
             } 
             else if (mode === "to_second_object_prompt") {
@@ -442,23 +452,17 @@
                 await startCamera("environment");
                 
                 speakAI(deepMsg, () => {
-                    // 💡 修正ポイント②：終了確認に行かず、新設した家族メッセージフェーズへ誘導する
-                    setupMobileAction("to_family_message", "話を終える（次へ進む）");
+                    setupMobileAction("to_family_message", "次へ進む");
                 });
             } 
-            // 💡 修正ポイント③：【新設】家族へのメッセージ誘導フェーズ（スマホ版）
             else if (mode === "to_family_message") {
                 const famMsg = "カメラを切り替えてご自身の顔が映った状態で、家族へのメッセージをお話しください";
                 caption.innerText = famMsg;
-                c.style.display = "none"; // 静止画があれば確実に隠す
-                
-                // カメラをご自身の顔（インカメラ：user）に即時切り替え
+                c.style.display = "none";
                 await startCamera("user");
-                currentStep = 10; // 進行インデックスを同期
+                currentStep = 10; 
                 
-                // 音声でメッセージ指示を発話
                 speakAI(famMsg, () => {
-                    // 言い終わったら、メッセージを話し終えるためのボタンを最下部に表示
                     setupMobileAction("to_end_dialog", "話を終える（次へ進む）");
                 });
             }
@@ -553,7 +557,6 @@
             return;
         }
 
-        // 💡 修正ポイント④：【新設】PC用家族メッセージ処理
         if (s.type === "family_message") {
             caption.innerText = s.msg;
             caption.style.opacity = 1;
