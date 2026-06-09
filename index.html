@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI Director - Personal History Project v30.0 (iOS/Android Universal Version)</title>
+    <title>AI Director - Personal History Project v31.0 (iOS Chrome Speech Fallback)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: 'Meiryo', sans-serif; overflow: hidden; }
         #container { position: relative; width: 100vw; height: 100vh; }
@@ -156,6 +156,7 @@
     let detectedName = ""; 
     let currentFacingMode = "user"; 
     let silenceTimer = null; 
+    let hasSpeechRecognition = true; // 💡 音声認識がブラウザに対応しているかの管理フラグ
 
     const steps = [
         { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願い致します。", type: "voice_name" }, 
@@ -170,7 +171,6 @@
         { msg: "カメラを切り替えてご自身の顔が映った状態で、家族へのメッセージをお話しください", type: "family_message" }
     ];
 
-    // AIの発話コントロール（若くて明るいトーン）
     function speakAI(text, onCompleteCallback) {
         if (!text) { if(onCompleteCallback) onCompleteCallback(); return; }
         
@@ -214,7 +214,12 @@
 
     function initSpeechRecognition() {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) return;
+        if (!SpeechRecognition) {
+            // 💡 修正ポイント①：iPhone Chromeなど、音声認識が最初から非対応のブラウザだった場合の処理
+            hasSpeechRecognition = false;
+            console.warn("このブラウザはWeb Speech API（音声認識）に非対応です。キーボード入力に切り替えます。");
+            return;
+        }
         
         recognition = new SpeechRecognition();
         recognition.lang = 'ja-JP';
@@ -294,9 +299,10 @@
         currentStep = 1;
 
         if (isMobile) {
-            // 💡 修正ポイント①：AIが話し終わったら「🎙️お名前を話す」ボタンを出して、iPhoneの制限を完全突破
+            // 💡 修正ポイント②：音声認識非対応（iPhone Chrome等）ならボタンの文字を「文字で入力」に動的変更
+            const btnLabel = hasSpeechRecognition ? "🎙️ お名前を話す" : "⌨️ お名前を文字で入力";
             speakAI(msg, () => {
-                setupMobileAction("start_voice_name", "🎙️ お名前を話す");
+                setupMobileAction("start_voice_name", btnLabel);
             });
         } else {
             try {
@@ -365,19 +371,21 @@
                                     v.srcObject = null;
                                 }
 
-                                const initialMsg = "これですね。これは何ですか。なぜ大切なのか、教えてください。";
+                                const initialMsg = "これですね。内容は同じです。これは何ですか。なぜ大切なのか、教えてください。";
                                 caption.innerText = initialMsg;
                                 
+                                // 💡 修正ポイント③：大切なもののフェーズでも、音声認識非対応なら「キーボード入力」へ誘導
+                                const btnLabel = hasSpeechRecognition ? "🎙️ お話を始める" : "⌨️ テキストで回答する";
+
                                 if (step.type === "lock") {
                                     currentStep = 5; 
-                                    // 💡 修正ポイント②：AIが喋り終わったら、iPhoneの制限をクリアするため「🎙️お話を始める」ボタンを出現させる
                                     speakAI(initialMsg, () => {
-                                        setupMobileAction("start_voice_initial", "🎙️ お話を始める");
+                                        setupMobileAction("start_voice_initial", btnLabel);
                                     });
                                 } else {
                                     currentStep = 8; 
                                     speakAI(initialMsg, () => {
-                                        setupMobileAction("start_voice_initial2", "🎙️ お話を始める");
+                                        setupMobileAction("start_voice_initial2", btnLabel);
                                     });
                                 }
                             } else {
@@ -405,19 +413,50 @@
         actionBtn.onclick = async () => {
             actionContainer.style.display = "none";
             
-            // 💡 修正ポイント③：[お名前を話す] タップの瞬間（完全同期）にマイクを起動！これでiPhoneでも100%動く
+            // 💡 修正ポイント④：【名前入力の救済】非対応ブラウザならポップアップ入力ダイアログを表示して次へ進む
             if (mode === "start_voice_name") {
-                if (recognition) { try { recognition.start(); } catch(e){} }
+                if (hasSpeechRecognition) {
+                    if (recognition) { try { recognition.start(); } catch(e){} }
+                } else {
+                    const typed = prompt("お名前を入力してください（マイク非対応ブラウザ用）", "渡辺睦");
+                    detectedName = typed ? typed.trim() : "渡辺睦";
+                    next(); // 強制進行
+                }
             }
-            // 💡 修正ポイント④：1つ目の[お話を始める] タップの瞬間にマイクを起動
+            // 💡 修正ポイント⑤：【1つ目のオブジェクト回答の救済】
             else if (mode === "start_voice_initial") {
-                if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
-                setupMobileAction("to_deep_question", "話を終える（次へ進む）");
+                if (hasSpeechRecognition) {
+                    if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
+                    setupMobileAction("to_deep_question", "話を終える（次へ進む）");
+                } else {
+                    const typed = prompt("これは何ですか？なぜ大切なのか教えてください（マイク非対応用）", "");
+                    capturedText = typed ? typed.trim() : "";
+                    // 入力された文字を元に、裏で自動キーワード判定を走らせる
+                    const deepMsg = generateDeepQuestion();
+                    caption.innerText = deepMsg;
+                    c.style.display = "none";
+                    await startCamera("environment");
+                    speakAI(deepMsg, () => {
+                        setupMobileAction("to_second_object_prompt", "次へ進む");
+                    });
+                }
             }
-            // 💡 修正ポイント⑤：2つ目の[お話を始める] タップの瞬間にマイクを起動
+            // 💡 修正ポイント⑥：【2つ目のオブジェクト回答の救済】
             else if (mode === "start_voice_initial2") {
-                if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
-                setupMobileAction("to_deep_question2", "話を終える（次へ進む）");
+                if (hasSpeechRecognition) {
+                    if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
+                    setupMobileAction("to_deep_question2", "話を終える（次へ進む）");
+                } else {
+                    const typed = prompt("これは何ですか？なぜ大切なのか教えてください（マイク非対応用）", "");
+                    capturedText = typed ? typed.trim() : "";
+                    const deepMsg = generateDeepQuestion();
+                    caption.innerText = deepMsg;
+                    c.style.display = "none";
+                    await startCamera("environment");
+                    speakAI(deepMsg, () => {
+                        setupMobileAction("to_family_message", "次へ進む");
+                    });
+                }
             }
             else if (mode === "start_camera_after_voice") {
                 await startCamera("user");
@@ -563,7 +602,11 @@
             currentStep++;
             await startCamera("user");
             speakAI(s.msg, () => {
-                if (recognition) { try { recognition.start(); } catch(e){} }
+                if (hasSpeechRecognition && recognition) { try { recognition.start(); } catch(e){} }
+                else {
+                    // 非対応ブラウザ用のメッセージ受付
+                    setupMobileAction("to_end_dialog", "話を終える（次へ進む）");
+                }
             });
             return;
         }
