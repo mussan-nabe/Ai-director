@@ -244,9 +244,9 @@ Text-align: center; box-shadow: 0 10px 30px rgba(0,127,255,0.4);
         { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial" }, 
         { msg: "", type: "voice_deep" }, 
         { msg: "では、あなたが見てほしいもう一つのものを見せてください", type: "lock2" }, 
-        { msg: "これですね。内容は同じです。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial2" }, 
+        { msg: "これですね。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial2" }, 
         { msg: "", type: "voice_deep2" },
-        { msg: "カメラを切り替えてご自身の顔が映った状態で、家族へのメッセージをお話しください", type: "family_message" }
+        { msg: "ご自身の顔が映った状態で、家族へのメッセージをお話しください", type: "family_message" }
     ];
 
     function speakAI(text, onCompleteCallback) {
@@ -420,10 +420,10 @@ Text-align: center; box-shadow: 0 10px 30px rgba(0,127,255,0.4);
                 const step = steps[currentStep-1];
 
                 if (step?.type === "pan_timer" || step?.type === "lock" || step?.type === "lock2") {
-                    if (movementScore > 20) { 
+                    if (movementScore > 35) { 
                         if (window.toastTimer) { clearTimeout(window.toastTimer); window.toastTimer = null; }
                         toast.style.display = "block";
-                    } else if (movementScore < 10) { 
+                    } else if (movementScore < 25) { 
                         if (!window.toastTimer && toast.style.display === "block") {
                             window.toastTimer = setTimeout(() => { toast.style.display = "none"; window.toastTimer = null; }, 1000); 
                         }
@@ -444,7 +444,7 @@ Text-align: center; box-shadow: 0 10px 30px rgba(0,127,255,0.4);
                                 c.style.display = "block"; 
                                 if (localStream) { localStream.getTracks().forEach(track => track.stop()); v.srcObject = null; }
 
-                                const initialMsg = "これですね。内容は同じです。これは何ですか。なぜ大切なのか、教えてください。";
+                                const initialMsg = "これですね。これは何ですか。なぜ大切なのか、教えてください。";
                                 caption.innerText = initialMsg;
                                 const btnLabel = hasSpeechRecognition ? "🎙️ お話を始める" : "⌨️ テキストで回答する";
 
@@ -530,7 +530,7 @@ Text-align: center; box-shadow: 0 10px 30px rgba(0,127,255,0.4);
                 speakAI(deepMsg, () => { setupMobileAction("to_family_message", "次へ進む"); });
             } 
             else if (mode === "to_family_message") {
-                const famMsg = "カメラを切り替えてご自身の顔が映った状態で、家族へのメッセージをお話しください";
+                const famMsg = "ご自身の顔が映った状態で、家族へのメッセージをお話しください";
                 caption.innerText = famMsg; c.style.display = "none";
                 await startCamera("user"); currentStep = 10; 
                 speakAI(famMsg, () => {
