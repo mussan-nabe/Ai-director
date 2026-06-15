@@ -203,16 +203,16 @@
     let bgm = null; // 💡 修正ポイント①：BGMオーディオ用の変数
 
     const steps = [
-        { msg: "こんにちは、AIディレクターです。まずはマイクに向かってお名前をお願い致します。", type: "voice_name" }, 
+        { msg: "こんにちは、AIディレクターです。まずはマイクに向かって社名とお名前をお願い致します。", type: "voice_name" }, 
         { msg: "", type: "confirm" }, 
-        { msg: "では、２０秒間でお部屋全体をゆっくり撮影してください。", type: "pan_timer", t: 20000 }, 
-        { msg: "では、あなたの大切なものを中央に映してください。", type: "lock" }, 
-        { msg: "これですね。内容は同じです。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial" }, 
+        { msg: "では、２０秒間でアピールしたい商品の全体を撮影してください。", type: "pan_timer", t: 20000 }, 
+        { msg: "では、商品を中央に映してカメラを固定してください。", type: "lock" }, 
+        { msg: "これですね。この商品の特徴を教えてください。", type: "voice_initial" }, 
         { msg: "", type: "voice_deep" }, 
-        { msg: "では、あなたが見てほしいもう一つのものを見せてください", type: "lock2" }, 
-        { msg: "これですね。内容は同じです。これは何ですか。なぜ大切なのか、教えてください。", type: "voice_initial2" }, 
+        { msg: "では、もう一つの商品を見せてください", type: "lock2" }, 
+        { msg: "これですね。この商品の特徴を教えてください。", type: "voice_initial2" }, 
         { msg: "", type: "voice_deep2" },
-        { msg: "カメラを切り替えてご自身の顔が映った状態で、家族へのメッセージをお話しください", type: "family_message" }
+        { msg: "カメラを切り替えてご自身の顔が映った状態で、投資家へのメッセージをお話しください", type: "family_message" }
     ];
 
     // AIの発話コントロール（若くて明るいトーン）
@@ -514,7 +514,7 @@
                     if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
                     setupMobileAction("to_deep_question", "話を終える（次へ進む）");
                 } else {
-                    showCustomInputModal("これは何ですか？なぜ大切なのか教えてください", "", async (text) => {
+                    showCustomInputModal("この商品の使い方を簡単に教えてください", "", async (text) => {
                         capturedText = text ? text : "";
                         const deepMsg = generateDeepQuestion();
                         caption.innerText = deepMsg;
@@ -532,7 +532,7 @@
                     if (recognition) { capturedText = ""; try { recognition.start(); } catch(e){} }
                     setupMobileAction("to_deep_question2", "話を終える（次へ進む）");
                 } else {
-                    showCustomInputModal("これは何ですか？なぜ大切なのか教えてください", "", async (text) => {
+                    showCustomInputModal("商品の特徴について、さらに教えてください", "", async (text) => {
                         capturedText = text ? text : "";
                         const deepMsg = generateDeepQuestion();
                         caption.innerText = deepMsg;
@@ -562,7 +562,7 @@
                 });
             } 
             else if (mode === "to_second_object_prompt") {
-                const promptMsg = "では、あなたが見てほしいもう一つのものを見せてください";
+                const promptMsg = "では、アピールしたいもう一つの商品を見せてください";
                 caption.innerText = promptMsg;
                 currentStep = 7; 
                 
@@ -583,7 +583,7 @@
                 });
             } 
             else if (mode === "to_family_message") {
-                const famMsg = "カメラを切り替えてご自身の顔が映った状態で、家族へのメッセージをお話しください";
+                const famMsg = "カメラを切り替えてご自身の顔が映った状態で、投資家のメッセージをお話しください";
                 caption.innerText = famMsg;
                 c.style.display = "none";
                 await startCamera("user");
